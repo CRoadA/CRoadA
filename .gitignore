@@ -1,2 +1,5 @@
-env
 /grids
+
+env
+cache
+__pycache__
