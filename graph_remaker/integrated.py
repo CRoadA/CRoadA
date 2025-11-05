@@ -1,29 +1,67 @@
-import pickle
 import numpy as np
-import math
 from dataclasses import dataclass
-from typing import Any, Self
+from typing import Any
 from data_manager import IS_STREET_INDEX
-from .data_structures import Point, StreetBorder
+from .data_structures import GridPoint, StreetBorder
+
+MeshPoint = tuple[float, float] # point on Mesh
+Grid = np.ndarray[(Any, Any, Any), Any] # point on Grid
+
+@dataclass
+class StreetConflict:
+    """Conflict of street with crossroads or grid parrt border.
+    Attributes:
+        conflict_points (list[GridPoint]): Grid points involved in conflict.
+        linestring_points (list[MeshPoint]): Points of street's linestring involved in conflict.
+    """
+    conflict_points: list[GridPoint]
+    linestring_points: list[MeshPoint]
+
+@dataclass
+class StreetDiscovery:
+    """Discovered data about street during the street discovery process.
+    Attributes:
+        linestring (list[MeshPoint]): Graph representation of street (part of Mesh). May be empty.
+        borders (list[StreetBorder]): Discovered borders of Street.
+        conflicts (list[StreetConflict]): Conflicts with Crossroads or grid part border.
+    """
+    linestring: list[MeshPoint]
+    borders: list[StreetBorder]
+    conflicts: list[StreetConflict]
 
 
 
+@dataclass
+class CrossroadDiscovery:
+    """Discovered data about street during the street discovery process.
+    Attributes:
+        points (list[GridPoint]): Points in the interior of the crossroad.
+        conflicting_points (list[GridPoint]): Conflicting points of the interior of the crossroad.
+        street_juntions (list[tuple[StreetDiscovery, MeshPoint]]): List of adjacentStreetDiscoveries with their junction points (parts of Mesh) binding the StreetDiscovery to the crossroad.
+    """
+    points: list[GridPoint]
+    conflicting_points: list[GridPoint]
+    street_juntions: list[tuple[StreetDiscovery, MeshPoint]]
 
-class FoundStreets:
+    
 
-    def __init__(self):
-        self.streets: list[Street] = []
-        self.disruptions: dict[Street, list[Point]] = {} # list of problematic points by their strets
-        self.crossroads: list[Crossroad]
+def discover_streets(grid_part: Grid) -> tuple[list[StreetDiscovery], list[CrossroadDiscovery]]:
+    """Discovers streets for grid part.
+    Args:
+        grid_part (Grid): searched through grid part.
+    Returns:
+        tuple consisting of:
+            - street_discoveries (list[StreetDiscovery]): Discovered streets with their conflicts.
+            - crossroad_discoveries (list[CrossroadDiscovery]): Discovered crossroads with their conflicts.
+    """
+    pass
 
-type Grid = np.ndarray[(Any, Any, Any), Any]
-
-def is_border_point(grid_part: Grid, point: Point):
+def is_border_point(grid_part: Grid, point: GridPoint):
     y, x = point
     neighborhood = grid_part[y - 1 : y + 2, x - 1 : x + 2, IS_STREET_INDEX]
     return neighborhood.sum() < neighborhood.size
 
-BFSGridNode = tuple[Point, Point] # origin and actual point
+BFSGridNode = tuple[GridPoint, GridPoint] # origin and actual point
 
 def _queue_neighbors_if_necessary(node: BFSGridNode, grid_part, queue: list[BFSGridNode], visited):
 
@@ -47,11 +85,11 @@ def _queue_neighbors_if_necessary(node: BFSGridNode, grid_part, queue: list[BFSG
             queue.append((point, (n_y, n_x)))
 
 
-def discover_street_borders(grid_part: Grid, handle: Point):
+def discover_street_borders(grid_part: Grid, handle: GridPoint):
     queue: list[BFSGridNode] = [(None, handle)] # (origin, point to visit)
-    visited: list[Point] = []
+    visited: list[GridPoint] = []
     borders: list[StreetBorder] = []
-    borders_of_points: dict[Point, StreetBorder] = {}
+    borders_of_points: dict[GridPoint, StreetBorder] = {}
     
     while queue:
         node = queue.pop(0)
@@ -101,7 +139,7 @@ def identify_borders(grid_part: Grid):
     are_checked = np.zeros(grid_part, dtype=bool)
     is_found, (row, col) = find_first_non_checked_street(grid_part)
     borders: list[StreetBorder] = []
-    borders_of_points: dict[Point, StreetBorder] = {}
+    borders_of_points: dict[GridPoint, StreetBorder] = {}
     while is_found:
         new_borders, new_borders_of_points, visited = discover_street_borders(grid_part, (row, col))
         borders += new_borders
@@ -113,44 +151,15 @@ def identify_borders(grid_part: Grid):
         is_found, (row, col) = find_first_non_checked_street(grid_part)
     return borders, borders_of_points
 
-@dataclass
-class Street:
-    id: int
-    points: list[Point]
-
-@dataclass
-class Crossroad:
-    streets: list[int] # ids
-
-def _find_opposite_border(grid_part: Grid, borders: list[StreetBorder], borders_of_points: dict[Point, StreetBorder], point: Point):
+def _find_opposite_border(grid_part: Grid, borders: list[StreetBorder], borders_of_points: dict[GridPoint, StreetBorder], point: GridPoint):
     pass
 
 step = 5
 
-def identify_streets(grid_part: Grid, borders: list[StreetBorder], borders_of_points: dict[Point, StreetBorder]):
+def identify_streets(grid_part: Grid, borders: list[StreetBorder], borders_of_points: dict[GridPoint, StreetBorder]):
     for border in borders:
         points = border.to_list()
         for point in points[::step]:
             #TODO
             # _find_opposite_border()
             pass
-
-overlap = 1
-
-def divide_into_parts(grid: Grid, part_size: int = 200):
-    width, height = grid.shape
-    x_parts_number = math.ceil(width / part_size)
-    y_parts_number = math.ceil(height / part_size)
-
-    results = []
-    for row in range(x_parts_number):
-        # lower/upper in the sense of indices values
-        # parts overlap by 1 row
-        y_lower = max(0, row * part_size - overlap)
-        y_upper = min(0, (row + 1) * part_size + overlap)
-        for col in range(y_parts_number):
-            # parts overlap by 1 column
-            x_lower = max(0, col * part_size - overlap)
-            x_upper = min(width, (col + 1) * part_size + overlap)
-            results.push(identify_streets(grid[y_lower:y_upper, x_lower:x_upper]))
-    # and so on...

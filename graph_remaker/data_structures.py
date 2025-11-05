@@ -3,14 +3,14 @@ from typing import Self
 """
 Coordinates in grid (row, col)
 """
-Point = tuple[int, int]
+GridPoint = tuple[int, int]
 
 class BorderNode:
-    value: Point
+    value: GridPoint
     _parent: Self
     _children: list[Self]
 
-    def __init__(self, parent: Self, value: Point):
+    def __init__(self, parent: Self, value: GridPoint):
         self._parent = parent
         self.value = value
         self._children = []
@@ -42,14 +42,14 @@ class BorderNode:
 class StreetBorder:
     _root: BorderNode
 
-    def __init__(self, root: Point = None):
-        if Point == None:
+    def __init__(self, root: GridPoint = None):
+        if GridPoint == None:
             self._root = None
             return
         
         self._root = BorderNode(None, root)
 
-    def _getChildNode(self, node: BorderNode, searched_point: Point):
+    def _getChildNode(self, node: BorderNode, searched_point: GridPoint):
         if node == None:
             return None
         
@@ -63,7 +63,7 @@ class StreetBorder:
             
         return None
 
-    def getNode(self, point: Point):
+    def getNode(self, point: GridPoint):
         return self._getChildNode(point)
     
     def get_leftmost_leaf(self):
@@ -72,7 +72,7 @@ class StreetBorder:
         
         return self._root.get_leftmost_leaf()
     
-    def appendChild(self, parent: Point, child: Point):
+    def appendChild(self, parent: GridPoint, child: GridPoint):
         parent_node = self._getChildNode(parent)
         parent_node.children.append(BorderNode(parent, child))
 
@@ -82,7 +82,7 @@ class StreetBorder:
         return StreetBorder(new_root)
 
 
-    def reroot(self, point: Point) -> Self:
+    def reroot(self, point: GridPoint) -> Self:
         """Reorganize tree, to make given point a root.
         
         Args:
@@ -110,7 +110,7 @@ class StreetBorder:
         # points on the other side of border root are just elements of root's subtree, so at this point the whole tree is already copied
         return new_border
     
-    def merge(self, merged_border: Self, merging_point: Point, inplace:bool = False):
+    def merge(self, merged_border: Self, merging_point: GridPoint, inplace:bool = False):
         """Merge two StreetBorders via given point.
         Args:
             merged_border (StreetBorder): Second StreetBorder to be merged.
