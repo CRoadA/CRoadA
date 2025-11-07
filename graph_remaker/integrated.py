@@ -1,11 +1,10 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Any
-from data_manager import IS_STREET_INDEX
+from data_manager import GRID_INDICES, Grid
 from .data_structures import GridPoint, StreetBorder
 
 MeshPoint = tuple[float, float] # point on Mesh
-Grid = np.ndarray[(Any, Any, Any), Any] # point on Grid
 
 @dataclass
 class StreetConflict:
@@ -58,7 +57,7 @@ def discover_streets(grid_part: Grid) -> tuple[list[StreetDiscovery], list[Cross
 
 def is_border_point(grid_part: Grid, point: GridPoint):
     y, x = point
-    neighborhood = grid_part[y - 1 : y + 2, x - 1 : x + 2, IS_STREET_INDEX]
+    neighborhood = grid_part[y - 1 : y + 2, x - 1 : x + 2, GRID_INDICES.IS_STREET]
     return neighborhood.sum() < neighborhood.size
 
 BFSGridNode = tuple[GridPoint, GridPoint] # origin and actual point
@@ -79,7 +78,7 @@ def _queue_neighbors_if_necessary(node: BFSGridNode, grid_part, queue: list[BFSG
         # * normal street points, if they have not been already visited
         # * border points (always), since they may be reached from different
         # borders what means, that these borders need to be merged
-        if grid_part[y, x, IS_STREET_INDEX] == 1 and (n_y, n_x) not in visited:
+        if grid_part[y, x, GRID_INDICES.IS_STREET] == 1 and (n_y, n_x) not in visited:
             queue.append((point, (n_y, n_x)))
         elif is_border_point(grid_part, (n_y, n_x)):
             queue.append((point, (n_y, n_x)))
@@ -131,7 +130,7 @@ def find_first_non_checked_street(grid: Grid, are_checked: np.ndarray[(Any, Any)
     for (y, x), value in np.ndenumerate(are_checked):
         if value == 0:
             are_checked[y, x] = 1
-            if grid[y, x, IS_STREET_INDEX] == True:
+            if grid[y, x, GRID_INDICES.IS_STREET] == True:
                 return True, (x, y), value
     return False, None
 
