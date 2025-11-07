@@ -82,6 +82,10 @@ def read_segment(segment_row: int, segment_col: int, file_name: str, data_dir: s
 
 
 def _create_file_v1(rows_number: int, columns_number: int, segment_h: int, segment_w: int, file_name: str, data_dir: str = "grids"):
+    """Create a file for points grid. Grid has  from the beginning the target size (does not grow as a result of saving segments)."""
+    metadata_bytes = 0
+    CELL_SIZE = 8 # in bytes
+
     with open(os.path.join(data_dir, file_name), "w") as file:
         file.write(METADATA_SEPARATOR.join(map(str, [
             1, # version
@@ -92,6 +96,11 @@ def _create_file_v1(rows_number: int, columns_number: int, segment_h: int, segme
             sys.byteorder
         ])))
         file.write("\n")
+        print(f"written address: {metadata_bytes + rows_number * columns_number * CELL_SIZE - 1}")
+        file.seek(metadata_bytes + rows_number * columns_number * CELL_SIZE - 1)
+        file.write('\0')
+
+
 
 def _write_segment_v1(segment: Grid, segment_row: int, segment_col: int, file_name: str, data_dir: str = "grids", metadata: GridFileMetadata = None):
     if metadata is None:
@@ -125,8 +134,8 @@ def _write_segment_v1(segment: Grid, segment_row: int, segment_col: int, file_na
         assert given_segment_w == desired_width, f"Given segment has wrong width {given_segment_w}. It belongs to the last column, thus its width is expected to be {desired_width}."
 
     CELL_SIZE = 8 # in bytes
-    SEGMENT_SIZE = np.prod((format_segment_h, format_segment_w)) * CELL_SIZE
-    REMAINDER_SEGMENT_SIZE = np.prod(format_segment_h, cols_n % format_segment_w) * CELL_SIZE
+    SEGMENT_SIZE = format_segment_h * format_segment_w * CELL_SIZE
+    REMAINDER_SEGMENT_SIZE = format_segment_h * cols_n % format_segment_w * CELL_SIZE
     ROW_SIZE = SEGMENT_SIZE + REMAINDER_SEGMENT_SIZE
 
     with open(os.path.join(data_dir, file_name), "rb+") as file:
@@ -147,20 +156,26 @@ def _read_segment_v1(segment_row: int, segment_col: int, file_name: str, data_di
 
     _assert_arguments_v1(segment_row, segment_col, file_name, data_dir=data_dir, metadata=metadata)
 
+    segments_n_vertically = math.ceil(rows_n / format_segment_h)
+    segments_n_horizontally = math.ceil(cols_n / format_segment_w)
+
     CELL_SIZE = 8 # in bytes
-    SEGMENT_SIZE = np.prod((format_segment_h, format_segment_w)) * CELL_SIZE
-    REMAINDER_SEGMENT_SIZE = np.prod(format_segment_h, cols_n % format_segment_w) * CELL_SIZE
+    SEGMENT_SIZE = format_segment_h * format_segment_w * CELL_SIZE
+    REMAINDER_SEGMENT_SIZE = format_segment_h * cols_n % format_segment_w * CELL_SIZE
     ROW_SIZE = SEGMENT_SIZE + REMAINDER_SEGMENT_SIZE
-    if segment_col == cols_n - 1:
-        if segment_row == rows_n - 1:
+    print(f"(segment_col, segment_row): ({segment_col}, {segment_row})")
+    print(f"(cols_n, rows_n): ({cols_n}, {rows_n})")
+    if segment_col == segments_n_horizontally - 1:
+        if segment_row == segments_n_vertically - 1:
             SEEKED_SEGMENT_SHAPE = (rows_n % format_segment_h, cols_n % format_segment_w, 2)
         else:
             SEEKED_SEGMENT_SHAPE = (format_segment_h, cols_n % format_segment_w, 2)
-    elif segment_row == rows_n - 1:
+    elif segment_row == segments_n_vertically - 1:
         SEEKED_SEGMENT_SHAPE = (rows_n % format_segment_h, format_segment_w, 2)
     else:
         SEEKED_SEGMENT_SHAPE = (format_segment_h, format_segment_w, 2)
 
+    print(f"SEEKED_SEGMENT_SHAPE: {SEEKED_SEGMENT_SHAPE}")
     with open(os.path.join(data_dir, file_name), "rb") as file:
         base = metadata_bytes
         # advance to proper row
@@ -191,84 +206,12 @@ def _read_metadata(file_name: str, data_dir: str = "grids") -> GridFileMetadata:
     Returns:
         metadata (GridFileMetadata): Metadata of the file.
     """
+    DESIRED_METADATA_NUMBER = 7
     with open(os.path.join(data_dir, file_name), "r") as file:
         first_line = file.readline()
         metadata_bytes = file.tell()
         splitted = first_line.split(METADATA_SEPARATOR)
         result = list(map(int, splitted[:-1] + [metadata_bytes]))
         result += [splitted[-1]]
+        assert len(result) == DESIRED_METADATA_NUMBER, f"Metadata line in the file is of wrong length {len(result)} instead of desired {DESIRED_METADATA_NUMBER}. Found metadata values: {result}"
         return result
-    
-
-def write(grid: Grid, file_name: str, data_dir: str = "grids"):
-    assert grid.shape[2] == 2
-    write_pkl(grid, file_name, data_dir)
-
-def read(file_name: str, data_dir: str = "grids"):
-    return read_pkl(file_name, data_dir)
-
-# def write_segment(segment: Grid, data_dir: str = "grids")
-
-# specific methods - better use general-purpose
-
-def write_pkl(grid: np.ndarray[(Any, Any, Any), Any], file_name: str, data_dir: str = "grids"):
-    with open(os.path.join(data_dir, file_name), "wb") as file:
-        pickle.dump(grid, file)
-
-def read_pkl(file_name: str, data_dir: str = "grids"):
-    with open(os.path.join(data_dir, file_name), "rb") as file:
-        return pickle.load(file)
-
-# Appears to be useless    
-
-@dataclass
-class Coordinates:
-    x: int
-    y: int
-
-@dataclass
-class Point:
-    y: int
-    x: int
-    is_street: bool
-    altitude: float
-
-class Grid:
-
-    _original_matrix: np.ndarray[(Any, Any, Any), Any]
-    _matrix: np.ndarray[(Any, Any, Any), Point]
-
-    # helper functions
-    _are_streets = np.vectorize(lambda point: point.is_street)
-    _get_altitudes = np.vectorize(lambda point: point.altitude)
-    
-    def __init__(self, grid: np.ndarray[(Any, Any, Any), Any]):
-        self._original_matrix = grid
-
-        X, Y, _ = grid.shape
-        self._matrix = np.zeros((X, Y))
-
-        for row in range(X):
-            for col in range(Y):
-                values = grid[row, col]
-                self._matrix[row, col] = Point(
-                    row, col,
-                    values[0] == 1,
-                    values[1]
-                )
-
-    def __getitem__(self, index):
-        return self._matrix[index]
-
-    """
-        Get matrix stating if the point is part of the street for whole
-        Grid.
-    """
-    def get_are_streets(self):
-        return self._are_streets(self._original_matrix)
-    
-    """
-        Get matrix with altitiudes of points all across the Grid.
-    """
-    def get_altitudes(self):
-        return self._get_altitudes(self._original_matrix)
