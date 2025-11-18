@@ -66,3 +66,12 @@ class GridBuilder():
         plt.imshow(grid, cmap="gray")
         plt.title(f"Siatka: {city_name}")
         plt.show()
+
+
+    def show_grid_fragment(self, grid, city_name, start_indexes : tuple, size : int):
+        x = start_indexes[0]
+        y = start_indexes[1]
+        plt.imshow(grid[x : x + size, y : y + size], cmap="gray")
+        plt.title(f"Siatka: {city_name}")
+        plt.show()
+
