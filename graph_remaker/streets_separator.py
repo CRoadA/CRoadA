@@ -128,10 +128,5 @@ def identify_streets(grid_part: Grid, borders: list[StreetBorder], borders_of_po
 
             if new_opposite_border != foregoing_opposite_border:
                 # TODO handle crossroad
+                pass
 
-
-
-
-
-
-        
