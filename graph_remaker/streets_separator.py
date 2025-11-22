@@ -1,4 +1,4 @@
-from data_manager import GRID_INDICES, Grid
+from grid_manager import GRID_INDICES, Grid
 from graph_remaker.data_structures import GridPoint, StreetBorder
 from graph_remaker.utils import is_border_point
 

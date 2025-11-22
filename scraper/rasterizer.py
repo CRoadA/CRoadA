@@ -45,7 +45,7 @@ class Rasterizer():
         return grid
     
     # size - wymiary fragmentu - zakładam że jest to kwadrat 
-    def rasterize_fragment_from_indexes(self, gdf_edges: gpd.DataFrame, indexes : tuple, size : int, pixel_size=1) -> np.array:
+    def rasterize_fragment_from_indexes(self, gdf_edges: gpd.GeoDataFrame, indexes : tuple, size : int, pixel_size=1) -> np.array:
         min_x, min_y, max_x, max_y = gdf_edges.total_bounds
         fragment_min_x = min_x + indexes[0] * size
         fragment_max_x = fragment_min_x + size

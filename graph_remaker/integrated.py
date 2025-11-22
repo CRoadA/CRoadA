@@ -1,7 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Any
-from data_manager import GRID_INDICES, Grid
+from grid_manager import GRID_INDICES, Grid
 from .data_structures import CrossroadDiscovery, GridPoint, StreetBorder, StreetDiscovery
 
 
