@@ -5,7 +5,7 @@ import time
 data_loader = DataLoader(1.0)
 
 time_start = time.time()
-city = "Warszawa, Polska"
+city = "Słupsk, Polska"
 
-grid_manager = data_loader.load_city_grid(city, "warsaw.dat")
+grid_manager = data_loader.load_city_grid(city, "slupsk.dat")
 print(f"Grid saving time for {city} equals: {round((time.time() - time_start), 2)}s")

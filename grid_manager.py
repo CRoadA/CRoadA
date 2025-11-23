@@ -193,8 +193,8 @@ class GridManager():
         self._assert_arguments_v1(segment_row, segment_col)
 
         # verify shape of given segment
-        segments_n_vertically = math.ceil(self.metadata.rows_number / self.metadata.segment_h)
-        segments_n_horizontally = math.ceil(self.metadata.columns_number / self.metadata.segment_w)
+        segments_n_vertically = math.ceil(self._metadata.rows_number / self._metadata.segment_h)
+        segments_n_horizontally = math.ceil(self._metadata.columns_number / self._metadata.segment_w)
         # given_segment_h, given_segment_w, _ = segment.shape
         given_segment_h, given_segment_w = segment.shape
 
