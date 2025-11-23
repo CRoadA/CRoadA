@@ -2,6 +2,7 @@ import numpy as np
 from rasterio.transform import from_origin
 from rasterio import features
 import geopandas as gpd
+import shapely
 
 class Rasterizer():
 
@@ -21,16 +22,22 @@ class Rasterizer():
             all_touched=True,
             dtype=np.uint8
         )
-        print(np.sum(grid)/(grid.shape[0] * grid.shape[1]))
 
         return grid
     
     
-    # czy jeżeli podane współrzedne będą wychodziły poza obszar gdf_edges to czy ucinać ten fragment?
-    def rasterize_fragment_from_coordinates(self, gdf_edges, min_x, max_x, min_y, max_y, pixel_size=1):
-        width = int(max_x - min_x)
-        height = int(max_y - min_y)
-        transform = from_origin(int(min_x), int(max_y), pixel_size, pixel_size)
+    def rasterize_segment_from_coordinates(self, gdf_edges, min_x, max_x, min_y, max_y, pixel_size=1):
+        gdfmin_x, gdfmin_y, gdfmax_x, gdfmax_y = gdf_edges.total_bounds
+        real_min_x = max(min_x, gdfmin_x)
+        real_max_x = min(max_x, gdfmax_x)
+        real_max_y = min(max_y, gdfmax_y)
+        real_min_y = max(min_y, gdfmin_y)
+        width = int(real_max_x - real_min_x)
+        height = int(real_max_y - real_min_y)
+        transform = from_origin(int(real_min_x), int(real_max_y), pixel_size, pixel_size)
+
+        segment_bounds = shapely.geometry.box(real_min_x, real_min_y, real_max_x, real_max_y)
+        gdf_edges = gdf_edges.clip(segment_bounds)
 
         grid = features.rasterize(
             [(geometry, 1) for geometry in gdf_edges.geometry],
@@ -40,28 +47,36 @@ class Rasterizer():
             all_touched=True,
             dtype=np.uint8
         )
-        print(np.sum(grid)/(grid.shape[0] * grid.shape[1]))
 
         return grid
     
-    # size - wymiary fragmentu - zakładam że jest to kwadrat 
-    def rasterize_fragment_from_indexes(self, gdf_edges: gpd.DataFrame, indexes : tuple, size : int, pixel_size=1) -> np.array:
-        min_x, min_y, max_x, max_y = gdf_edges.total_bounds
-        fragment_min_x = min_x + indexes[0] * size
-        fragment_max_x = fragment_min_x + size
-        fragment_min_y = min_y + indexes[1] * size
-        fragment_max_y = fragment_min_y + size
 
-        transform = from_origin(int(fragment_min_x), int(fragment_max_y), pixel_size, pixel_size)
+    def rasterize_segment_from_indexes(self, gdf_edges: gpd.GeoDataFrame, indexes : tuple, size_w : int, size_h : int, pixel_size=1) -> np.array:
+        min_x, min_y, max_x, max_y = gdf_edges.total_bounds
+        segment_min_x = min_x + indexes[0] * size_w * pixel_size
+        segment_max_x = segment_min_x + size_w * pixel_size
+        if segment_max_x > max_x:
+            segment_max_x = max_x
+            size_w = int((segment_max_x - segment_min_x) / pixel_size)
+
+        segment_min_y = min_y + indexes[1] * size_h * pixel_size
+        segment_max_y = segment_min_y + size_h * pixel_size
+        if segment_max_y > max_y:
+            segment_max_y = max_y
+            size_h = int((segment_max_y - segment_min_y) / pixel_size)
+
+        transform = from_origin(int(segment_min_x), int(segment_max_y), pixel_size, pixel_size)
+
+        segment_bounds = shapely.geometry.box(segment_min_x, segment_min_y, segment_max_x, segment_max_y)
+        gdf_edges = gdf_edges.clip(segment_bounds)
 
         grid = features.rasterize(
             [(geometry, 1) for geometry in gdf_edges.geometry],
-            out_shape=(size, size), 
+            out_shape=(size_w, size_h), # poprawić długości
             transform=transform,
             fill=0,
             all_touched=True,
             dtype=np.uint8
         )
-        print(np.sum(grid)/(grid.shape[0] * grid.shape[1]))
 
         return grid

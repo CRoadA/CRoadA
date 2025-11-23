@@ -162,7 +162,8 @@ class GridManager():
         # verify shape of given segment
         segments_n_vertically = math.ceil(self.metadata.rows_number / self.metadata.segment_h)
         segments_n_horizontally = math.ceil(self.metadata.columns_number / self.metadata.segment_w)
-        given_segment_h, given_segment_w, _ = segment.shape
+        # given_segment_h, given_segment_w, _ = segment.shape
+        given_segment_h, given_segment_w = segment.shape
 
         rows_n = self.metadata.rows_number
         cols_n = self.metadata.columns_number

@@ -10,7 +10,7 @@ class GraphLoader():
 
 
     def load_graph(self, city_name):
-        graph = ox.graph.graph_from_place(city_name, network_type="drive")
+        graph = ox.graph.graph_from_place(city_name, network_type="drive", simplify=False)
         return graph
     
 
@@ -33,18 +33,66 @@ class GraphLoader():
             if "highway" in data and ((not isinstance(data["highway"], list) and data["highway"] == highway) or (isinstance(data["highway"], list) and highway in data["highway"])):
                 if "width" in data:
                     if isinstance(data["width"], list):
-                        width = np.mean([float(x) for x in data["width"]])         
+                        width = np.mean([self.convert(x, "float") for x in data["width"]])         
                     else:
-                        width = float(data["width"])
-                elif 'lanes' in data:
+                        width = self.convert(data["width"], "float")
+                elif 'lanes' in data or width is None:
                     if isinstance(data["lanes"], list):
-                        width = np.mean([int(x) for x in data["lanes"]]) * 3
+                        width = np.mean([self.convert(x, "int") for x in data["lanes"]]) * 3
                     else:
-                        width = int(data['lanes']) * 3  # przyjmujemy 3 m na pas
-                sum_width += width
-                count_street += 1
+                        width = self.convert(data["lanes"], "int") * 3  # przyjmujemy 3 m na pas
+                if width is not None:
+                    sum_width += width
+                    count_street += 1
                 
         return sum_width/count_street
+    
+    def convert(self, data : str | None, type : str = "float"):
+
+        if data is None:
+            return None
+
+        data = str(data).strip()
+        if data.lower() in ["nan", "none", "null", ""]:
+            return None
+
+        if "'" in data:
+            try:
+                cleaned = data.replace('"', "")
+                feet_str, inch_str = cleaned.split("'")
+                feet = float(feet_str)
+                inches = float(inch_str)
+                value_m = feet * 0.3048 + inches * 0.0254  # metry
+            except:
+                return None
+
+            return int(value_m) if type == "int" else value_m
+
+        if data.endswith("ft") or data.endswith(" ft"):
+            try:
+                feet = float(data.replace("ft", "").strip())
+                value_m = feet * 0.3048
+            except:
+                return None
+
+            return int(value_m) if type == "int" else value_m
+
+        if data.endswith("m") or data.endswith(" m"):
+            try:
+                value_m = float(data.replace("m", "").strip())
+            except:
+                return None
+
+            return int(value_m) if type == "int" else value_m
+
+        try:
+            value_m = float(data)
+        except:
+            return None
+
+        return int(value_m) if type == "int" else value_m
+
+
 
     def get_highways_width(self, graph):
         highways = self.get_all_highways(graph)
@@ -65,11 +113,11 @@ class GraphLoader():
         lanes_width_counter = 0
         highway_width_counter = 0
         for u, v, k, data in graph.edges(keys=True, data=True):
+            width = 0
             if 'length' in data:
                 length = data['length']
             elif 'geometry' in data:
                 if isinstance(data['geometry'], LineString):
-                    # Używamy funkcji OSMnx do obliczenia długości geograficznej w metrach
                     length = ox.distance.great_circle_vec(
                         *data['geometry'].coords[0][::-1],
                         *data['geometry'].coords[-1][::-1]
@@ -82,17 +130,17 @@ class GraphLoader():
             if 'width' in data:
                 lanes_width_counter += 1
                 if isinstance(data["width"], list):
-                    width = np.mean([float(x) for x in data["width"]])         
+                    width = np.mean([self.convert(x, "float") for x in data["width"]])         
                 else:
-                    width = float(data["width"])
+                    width = self.convert(data["width"], "float")
                         
-            elif 'lanes' in data:
+            elif 'lanes' in data or width is None:
                 lanes_width_counter += 1
                 if isinstance(data["lanes"], list):
-                    width = np.mean([int(x) for x in data["lanes"]]) * 3
+                    width = np.mean([self.convert(x, "int") for x in data["lanes"]]) * 3
                 else:
-                    width = int(data['lanes']) * 3  # przyjmujemy 3 m na pas
-            elif 'highway' in data:
+                    width = self.convert(data["lanes"], "int") * 3  # przyjmujemy 3 m na pas
+            elif 'highway' in data or width is None:
                 highway_width_counter += 1
                 hw = data['highway']
                 if isinstance(hw, list):

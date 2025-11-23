@@ -6,10 +6,11 @@ import geopandas as gpd
 from Scraper.rasterizer import Rasterizer
 from Scraper.graph_loader import GraphLoader
 import matplotlib.pyplot as plt
+from shapely import LineString
 
 
 class GridBuilder():
-    def __init__(self, folder="grid_data"):
+    def __init__(self, folder="grids"):
         self.folder = folder
         os.makedirs(f"{self.folder}", exist_ok=True)
         self.loader = GraphLoader()
@@ -52,6 +53,9 @@ class GridBuilder():
     def get_city_grid(self, city_name):
         graph = self.loader.load_graph(city_name)
 
+        for u, v, k, data in list(graph.edges(data=True, keys=True)):
+            linestring = LineString([[graph.nodes[u]["x"], graph.nodes[u]["y"]], [graph.nodes[v]["x"], graph.nodes[v]["y"]]])
+            data["geometry"] = linestring
         edges = self.loader.get_edges_measurements(graph)
 
         gdf_edges = self.loader.convert_to_gdf(edges)
@@ -61,6 +65,22 @@ class GridBuilder():
         grid = self.rasterizer.get_rasterize_roads(gdf_edges)
 
         return grid
+    
+
+    def get_city_roads(self, city_name):
+        graph = self.loader.load_graph(city_name)
+
+        for u, v, k, data in list(graph.edges(data=True, keys=True)):
+            linestring = LineString([[graph.nodes[u]["x"], graph.nodes[u]["y"]], [graph.nodes[v]["x"], graph.nodes[v]["y"]]])
+            data["geometry"] = linestring
+        edges = self.loader.get_edges_measurements(graph)
+
+        gdf_edges = self.loader.convert_to_gdf(edges)
+
+        gdf_edges["geometry"] = gdf_edges.apply(lambda row: self.geometry_processor.get_edge_polygon(row), axis=1)
+
+        return gdf_edges
+    
     
     def show_grid(self, grid, city_name):
         plt.imshow(grid, cmap="gray")
