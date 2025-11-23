@@ -1,4 +1,4 @@
-from data_manager import GridManager
+from grid_manager import GridManager
 from Scraper.grid_builder import GridBuilder 
 from Scraper.rasterizer import Rasterizer
 import math

@@ -1,10 +1,10 @@
 import os
 import pickle
-from Scraper.geometry_processor import GeometryProcessor
+from scraper.geometry_processor import GeometryProcessor
 import osmnx as ox
 import geopandas as gpd
-from Scraper.rasterizer import Rasterizer
-from Scraper.graph_loader import GraphLoader
+from scraper.rasterizer import Rasterizer
+from scraper.graph_loader import GraphLoader
 import matplotlib.pyplot as plt
 from shapely import LineString
 
