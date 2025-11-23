@@ -1,6 +1,6 @@
 from grid_manager import GridManager
-from Scraper.grid_builder import GridBuilder 
-from Scraper.rasterizer import Rasterizer
+from scraper.grid_builder import GridBuilder 
+from scraper.rasterizer import Rasterizer
 import math
 import os
 
@@ -45,7 +45,7 @@ class DataLoader():
 
         segment_rows = math.ceil((rows_number)/(self.segment_w * self.grid_density))
         segment_cols = math.ceil((columns_number)/(self.segment_h * self.grid_density))
-        grid_manager = GridManager(file_name, int(rows_number), int(columns_number), self.segment_h, self.segment_w, self.data_dir)
+        grid_manager = GridManager(file_name, rows_number=int(rows_number), columns_number=int(columns_number), grid_density = self.grid_density, segment_h=self.segment_h, segment_w=self.segment_w, data_dir=self.data_dir)
         print(f"Width: {int(rows_number)}, height: {int(columns_number)}, cols: {segment_cols}, rows: {segment_rows}")
 
         rasterizer = Rasterizer()

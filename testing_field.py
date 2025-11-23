@@ -1,4 +1,4 @@
-from Scraper import DataLoader
+from scraper import DataLoader
 import time
 
 
