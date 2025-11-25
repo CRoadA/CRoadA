@@ -1,6 +1,7 @@
 from grid_manager import GridManager
 from scraper.grid_builder import GridBuilder 
 from scraper.rasterizer import Rasterizer
+import numpy as np
 import math
 import os
 
@@ -59,3 +60,57 @@ class DataLoader():
                 grid_manager.write_segment(grid, i, j)
         return grid_manager
 
+    def add_elevation_to_grid(self, grid_manager: GridManager):
+        """Uzupełnia istniejący grid o dane wysokościowe."""
+
+        meta = grid_manager.get_metadata()
+
+        segments_rows = math.ceil(meta.rows_number / meta.segment_h)
+        segments_cols = math.ceil(meta.columns_number / meta.segment_w)
+
+        # Stała przybliżona: ile metrów ma jeden stopień szerokości geograficznej
+        METERS_PER_DEG_LAT = 111132.0
+
+        print(f"Rozpoczynam dodawanie wysokości dla {segments_rows}x{segments_cols} segmentów...")
+
+        for i in range(segments_rows):
+            for j in range(segments_cols):
+
+                segment = grid_manager.read_segment(i, j)
+                h, w, _ = segment.shape
+
+                height_map = np.zeros((h, w), dtype=np.float32)
+
+                for y in range(h):
+                    global_row = i * meta.segment_h + y
+
+                    offset_lat_m = global_row * meta.grid_density
+                    current_lat = meta.upper_left_latitude - (offset_lat_m / METERS_PER_DEG_LAT)
+
+                    meters_per_deg_lon = METERS_PER_DEG_LAT * math.cos(math.radians(current_lat))
+
+                    for x in range(w):
+                        global_col = j * meta.segment_w + x
+
+                        offset_lon_m = global_col * meta.grid_density
+                        current_lon = meta.upper_left_longitude + (offset_lon_m / meters_per_deg_lon)
+
+
+
+                        # Tutaj funkcja pobieracja wysokosc
+
+                        altitude = self._get_altitude_source(current_lat, current_lon)
+                        height_map[y, x] = altitude
+
+                segment[:, :, 1] = height_map
+                grid_manager.write_segment(segment, i, j)
+
+                print(f"Zapisano wysokość: segment [{i}, {j}]")
+
+    def _get_altitude_source(self, lat: float, lon: float) -> float:
+        # Tymczasowa funkcja tworzaca teren
+        base_height = 200.0
+        wave1 = math.sin(lat * 1000) * 20
+        wave2 = math.cos(lon * 1000) * 20
+
+        return base_height + wave1 + wave2
