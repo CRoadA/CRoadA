@@ -40,15 +40,15 @@ class DataLoader():
         builder = GridBuilder()
         gdf_edges = builder.get_city_roads(city)
         min_x, min_y, max_x, max_y = gdf_edges.total_bounds
-        rows_number = max_x - min_x
-        columns_number = max_y - min_y
+        columns_number = max_x - min_x
+        rows_number = max_y - min_y
 
-        segment_rows = math.ceil((rows_number)/(self.segment_w * self.grid_density))
-        segment_cols = math.ceil((columns_number)/(self.segment_h * self.grid_density))
+        segment_rows = math.ceil((rows_number)/(self.segment_h * self.grid_density))
+        segment_cols = math.ceil((columns_number)/(self.segment_w * self.grid_density))
         grid_manager = GridManager(file_name, rows_number=int(rows_number), columns_number=int(columns_number), 
                                    grid_density = self.grid_density, segment_h=self.segment_h, segment_w=self.segment_w, 
                                    data_dir=self.data_dir, upper_left_longitude=max_x, upper_left_latitude=max_y)
-        print(f"Width: {int(rows_number)}, height: {int(columns_number)}, cols: {segment_cols}, rows: {segment_rows}")
+        print(f"Height: {int(rows_number)}, Width: {int(columns_number)}, rows: {segment_rows}, cols: {segment_cols}")
 
         rasterizer = Rasterizer()
         for i in range(segment_rows):

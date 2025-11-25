@@ -53,13 +53,13 @@ class Rasterizer():
 
     def rasterize_segment_from_indexes(self, gdf_edges: gpd.GeoDataFrame, indexes : tuple, size_w : int, size_h : int, pixel_size=1) -> np.array:
         min_x, min_y, max_x, max_y = gdf_edges.total_bounds
-        segment_min_x = min_x + indexes[0] * size_w * pixel_size
+        segment_min_x = min_x + indexes[1] * size_w * pixel_size
         segment_max_x = segment_min_x + size_w * pixel_size
         if segment_max_x > max_x:
             segment_max_x = max_x
             size_w = int((segment_max_x - segment_min_x) / pixel_size)
 
-        segment_min_y = min_y + indexes[1] * size_h * pixel_size
+        segment_min_y = min_y + indexes[0] * size_h * pixel_size
         segment_max_y = segment_min_y + size_h * pixel_size
         if segment_max_y > max_y:
             segment_max_y = max_y
@@ -72,7 +72,7 @@ class Rasterizer():
 
         grid = features.rasterize(
             [(geometry, 1) for geometry in gdf_edges.geometry],
-            out_shape=(size_w, size_h), # poprawić długości
+            out_shape=(size_h, size_w),
             transform=transform,
             fill=0,
             all_touched=True,
