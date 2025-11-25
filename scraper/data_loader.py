@@ -60,6 +60,7 @@ class DataLoader():
                 grid_manager.write_segment(grid, i, j)
         return grid_manager
 
+
     def add_elevation_to_grid(self, grid_manager: GridManager):
         """Uzupełnia istniejący grid o dane wysokościowe."""
 

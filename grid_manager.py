@@ -202,6 +202,7 @@ class GridManager():
             given_segment_h, given_segment_w = segment.shape
 
 
+
         rows_n = self._metadata.rows_number
         cols_n = self._metadata.columns_number
 
