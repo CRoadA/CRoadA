@@ -65,6 +65,7 @@ class DataLoader():
 
         meta = grid_manager.get_metadata()
 
+
         segments_rows = math.ceil(meta.rows_number / meta.segment_h)
         segments_cols = math.ceil(meta.columns_number / meta.segment_w)
 

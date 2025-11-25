@@ -204,6 +204,7 @@ class GridManager():
 
         rows_n = self._metadata.rows_number
         cols_n = self._metadata.columns_number
+
         # for segment's height
         if rows_n % self._metadata.segment_h == 0 \
             or segment_row < segments_n_vertically - 1: # if the segment shape should follow the format (typical case)
