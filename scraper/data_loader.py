@@ -4,6 +4,7 @@ from scraper.rasterizer import Rasterizer
 import numpy as np
 import math
 import os
+import srtm
 
 class DataLoader():
 
@@ -60,59 +61,89 @@ class DataLoader():
                 grid_manager.write_segment(grid, i, j)
         return grid_manager
 
-
     def add_elevation_to_grid(self, grid_manager: GridManager):
-        """Uzupełnia istniejący grid o dane wysokościowe."""
+        """
+        Enriches the existing grid with elevation data retrieved from NASA SRTM.
 
+        This method iterates through grid segments, converts local map coordinates
+        (e.g., UTM EPSG:32634) to WGS84 (Lat/Lon) if necessary, queries the SRTM
+        database for altitude, and updates the grid files.
+
+        Args:
+            grid_manager (GridManager): The manager object handling grid file I/O.
+        """
+        import srtm
+        from pyproj import Transformer
+
+        print("Initializing SRTM data provider...")
+        geo_data = srtm.get_data()
         meta = grid_manager.get_metadata()
 
+        is_metric = not (-180 <= meta.upper_left_longitude <= 180)
+        transformer = None
+
+        if is_metric:
+            print(f"Metric coordinates detected (X={meta.upper_left_longitude:.2f}). "
+                  f"Initializing EPSG:32634 -> EPSG:4326 transformer.")
+            transformer = Transformer.from_crs("EPSG:32634", "EPSG:4326", always_xy=True)
+        else:
+            print("Geographic coordinates detected. No conversion required.")
 
         segments_rows = math.ceil(meta.rows_number / meta.segment_h)
         segments_cols = math.ceil(meta.columns_number / meta.segment_w)
 
-        # Stała przybliżona: ile metrów ma jeden stopień szerokości geograficznej
-        METERS_PER_DEG_LAT = 111132.0
+        print(f"Processing elevation for {segments_rows}x{segments_cols} segments...")
 
-        print(f"Rozpoczynam dodawanie wysokości dla {segments_rows}x{segments_cols} segmentów...")
+        for row_idx in range(segments_rows):
+            for col_idx in range(segments_cols):
+                segment = grid_manager.read_segment(row_idx, col_idx)
 
-        for i in range(segments_rows):
-            for j in range(segments_cols):
-
-                segment = grid_manager.read_segment(i, j)
-                h, w, _ = segment.shape
+                h, w = segment.shape[:2]
 
                 height_map = np.zeros((h, w), dtype=np.float32)
 
                 for y in range(h):
-                    global_row = i * meta.segment_h + y
-
-                    offset_lat_m = global_row * meta.grid_density
-                    current_lat = meta.upper_left_latitude - (offset_lat_m / METERS_PER_DEG_LAT)
-
-                    meters_per_deg_lon = METERS_PER_DEG_LAT * math.cos(math.radians(current_lat))
+                    global_row = row_idx * meta.segment_h + y
+                    current_y_map = meta.upper_left_latitude - (global_row * meta.grid_density)
 
                     for x in range(w):
-                        global_col = j * meta.segment_w + x
+                        global_col = col_idx * meta.segment_w + x
+                        current_x_map = meta.upper_left_longitude + (global_col * meta.grid_density)
 
-                        offset_lon_m = global_col * meta.grid_density
-                        current_lon = meta.upper_left_longitude + (offset_lon_m / meters_per_deg_lon)
+                        if transformer:
+                            lon, lat = transformer.transform(current_x_map, current_y_map)
+                        else:
+                            lon, lat = current_x_map, current_y_map
 
-
-
-                        # Tutaj funkcja pobieracja wysokosc
-
-                        altitude = self._get_altitude_source(current_lat, current_lon)
-                        height_map[y, x] = altitude
+                        height_map[y, x] = self._get_altitude_source(lat, lon, geo_data)
 
                 segment[:, :, 1] = height_map
-                grid_manager.write_segment(segment, i, j)
+                grid_manager.write_segment(segment, row_idx, col_idx)
 
-                print(f"Zapisano wysokość: segment [{i}, {j}]")
+                print(f"Segment [{row_idx}, {col_idx}] saved. Max elevation: {np.max(height_map):.2f} m")
 
-    def _get_altitude_source(self, lat: float, lon: float) -> float:
-        # Tymczasowa funkcja tworzaca teren
-        base_height = 200.0
-        wave1 = math.sin(lat * 1000) * 20
-        wave2 = math.cos(lon * 1000) * 20
+    def _get_altitude_source(self, lat: float, lon: float, geo_data=None) -> float:
+        """
+        Safely retrieves elevation from the SRTM data source.
 
-        return base_height + wave1 + wave2
+        Args:
+            lat (float): Latitude in degrees.
+            lon (float): Longitude in degrees.
+            geo_data: The SRTM data object.
+
+        Returns:
+            float: Elevation in meters, or 0.0 if data is missing or invalid.
+        """
+        if geo_data is None:
+            return 0.0
+
+        try:
+            elevation = geo_data.get_elevation(lat, lon)
+
+            if elevation is None:
+                return 0.0
+
+            return float(elevation)
+
+        except Exception:
+            return 0.0
