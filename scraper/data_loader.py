@@ -82,6 +82,7 @@ class DataLoader():
         is_metric = not (-180 <= meta.upper_left_longitude <= 180)
         transformer = None
 
+
         if is_metric:
             print(f"Metric coordinates detected (X={meta.upper_left_longitude:.2f}). "
                   f"Initializing EPSG:32634 -> EPSG:4326 transformer.")
