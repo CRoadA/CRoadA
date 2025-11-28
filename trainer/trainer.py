@@ -5,7 +5,7 @@ Sequence = tf.keras.utils.Sequence
 import numpy as np
 from typing import Tuple
 
-from grid_manager import Grid, GRID_INDICES, GridFileMetadata, GridManager
+from grid_manager import Grid, GRID_INDICES, GridManager
 
 class Trener():
     # model:
@@ -39,8 +39,8 @@ class Trener():
         file_path = random.choice(list(self._files.keys()))
         self._files[file_path] += 1 # increment count of uses
 
-        grid_metadata = GridFileMetadata(file_path) # load metadata
-        grid_manager = GridManager(grid_metadata) # load grid manager
+        grid_manager = GridManager(file_path) # load grid manager
+        grid_metadata = grid_manager.get_metadata()
         grid_rows, grid_cols = grid_metadata.rows_number, grid_metadata.columns_number
         segment_rows, segment_cols = grid_metadata.segment_h, grid_metadata.segment_w
         # cut_size = self._model.input_size #  - get input size from the model TODO - rethink cut_size passing to the method
@@ -125,8 +125,8 @@ class CutIterator:
         sequence._files[self._file_path] += 1 # increment count of uses
         self._cut_size = cut_size
 
-        self._grid_metadata = GridFileMetadata(self._file_path) # load metadata
-        self._grid_manager = GridManager(self._grid_metadata) # load grid manager
+        self._grid_manager = GridManager(self._file_path) # load grid manager
+        self._grid_metadata = self._grid_manager.get_metadata()
         self._grid_rows, self._grid_cols = self._grid_metadata.rows_number, self._grid_metadata.columns_number
         self._segment_rows, self._segment_cols = self._grid_metadata.segment_h, self._grid_metadata.segment_w
 
