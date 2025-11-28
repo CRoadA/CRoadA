@@ -84,7 +84,7 @@ class GridManager():
         else:
             raise ValueError(f"Unsupported file version {self._metadata.version}")
         
-    def read_segment(self, segment_row: int, segment_col: int):
+    def read_segment(self, segment_row: int, segment_col: int) -> Grid:
         """Read segment from given file.
         Args:
             segment_row (int): 0-based row index of the segment (in terms of segments, not the grids columns).
@@ -228,7 +228,7 @@ class GridManager():
             file.seek(self._coords_to_file_position(segment_row, segment_col))
             segment.astype(np.float32).tofile(file)
 
-    def _read_segment_v1(self, segment_row: int, segment_col: int):
+    def _read_segment_v1(self, segment_row: int, segment_col: int) -> Grid:
 
         self._assert_arguments_v1(segment_row, segment_col)
 
