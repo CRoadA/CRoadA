@@ -214,7 +214,7 @@ class StreetBorder:
         Returns
         -------
         list[BorderNode] | None
-            List beginning with given root followed by succeeding descendants. None, if the searched node is not a descendant of root.
+            List beginning with given root followed by succeeding descendants and ending with searched nde. None, if the searched node is not a descendant of root.
         """
 
         if searched_node == root:
@@ -228,7 +228,32 @@ class StreetBorder:
         return None
 
     
-    def cut_around_point(self, cutting_point: GridPoint, first_reference_point: GridPoint, second_reference_point):
+    def cut_around_point(self, cutting_point: GridPoint, first_reference_point: GridPoint, second_reference_point: GridPoint) -> Self:
+        """Cut off a branch in border based on three reference points. Original border is shrinked and the cut-off part is returned.
+
+        Parameters
+        ----------
+        cutting_point : GridPoint
+            Point, around which the the tree nedds to be cut off. Due to the fact, that it may not lie directly on the path between other reference points (but on some 'offshoot'), actually cutting is performed on the nearest 'fork' point. The point of this is a real separation of reference points istead of separation of cutting point with its branch and leaving both reference points in the same border.
+
+            first
+              |--------fork----------- second       
+            cutting point
+        first_reference_point : GridPoint
+            First reference point. Specifies one resullt tree (not necessarily the original one). It cannot lie on path from cutting point to the second reference point (it would prevent from finding 'fork').
+        second_reference_point : GridPoint
+            Second reference point. See the first one.
+
+        Returns
+        -------
+        StreetBorder
+            Cut-off street border. This is the one, which did not contain root before the operation and according to this, it contains either first reference point or the second one.
+
+        Raises
+        ------
+        ValueError
+            If First reference point lies on path from cutting point to the second reference point (or vice versa i.e. second on path from cutting point to the first).
+        """
 
         cutting_node = self._get_node(cutting_point)
         first_reference = self._get_node(first_reference_point)
@@ -237,24 +262,39 @@ class StreetBorder:
         path_to_first = self._find_path_between_nodes(cutting_node, first_reference)
         path_to_second = self._find_path_between_nodes(cutting_node, second_reference)
 
+        # Check, if reference nodes are not in path to the other one (there would be then no fork actually)
+        if first_reference in path_to_first or second_reference in path_to_second:
+            raise ValueError("One reference point lies on a path to another, so there is no actual fork.")
+        
         # Find fork
-        i = 0
+        i = 1 # first is obviously equal, because it is cutting point
         shorter_lenght = min(len(path_to_first), len(path_to_second))
         while i < shorter_lenght and path_to_first[i] == path_to_second[i]:
             i += 1
 
-        fork = path_to_first[i - 1]
+        fork_node = path_to_first[i - 1]
 
-        # branching nodes
+        # Branching nodes
         first_branch_node = path_to_first[i]
         second_branch_node = path_to_second[i]
-        offshoot = path_to_first[i - 1]
+        offshoot_branch_node = path_to_first[i - 1]
 
-        # actual cutting
-        # TODO
-        fork_parent = fork._parent
-        if fork_parent == offshoot:
-            pass
+        # Actual cutting
+        # Where is root?
+        root_path_to_fork = self._find_root_path_to_node(fork_node)
+        cut_off_border: StreetBorder = None
+        if root_path_to_fork[-2] == first_branch_node or root_path_to_fork[-2] == offshoot_branch_node: # If root is in the first part
+            # disjoin branch
+            fork_node._children.remove(second_branch_node)
+            second_branch_node._parent = None
+            # create new border
+            cut_off_border = StreetBorder(second_branch_node)
+        else: # If root is in the second branch
+            second_branch_node._children.remove(fork_node)
+            fork_node._parent = None
+            cut_off_border = StreetBorder(fork_node)
+
+        return cut_off_border
 
 
     def _get_node(self, point: GridPoint) -> BorderNode | None:
@@ -387,15 +427,15 @@ class StreetBorder:
     #         Lowest common root of given points.
     #     """
 
-@dataclass
-class StreetConflict:
-    """Conflict of street with crossroads or grid parrt border.
-    Attributes:
-        conflict_points (list[GridPoint]): Grid points involved in conflict.
-        linestring_points (list[MeshPoint]): Points of street's linestring involved in conflict.
-    """
-    conflict_points: list[GridPoint]
-    linestring_points: list[MeshPoint]
+# @dataclass
+# class StreetConflict:
+#     """Conflict of street with crossroads or grid parrt border.
+#     Attributes:
+#         conflict_points (list[GridPoint]): Grid points involved in conflict.
+#         linestring_points (list[MeshPoint]): Points of street's linestring involved in conflict.
+#     """
+#     conflict_points: list[GridPoint]
+#     linestring_points: list[MeshPoint]
 
 @dataclass
 class StreetDiscovery:
@@ -403,11 +443,11 @@ class StreetDiscovery:
     Attributes:
         linestring (list[MeshPoint]): Graph representation of street (part of Mesh). May be empty.
         borders (list[StreetBorder]): Discovered borders of Street.
-        conflicts (list[StreetConflict]): Conflicts with Crossroads or grid part border.
+        conflicts (list[GridPoint]): Conflicts with Crossroads or grid part border.
     """
     linestring: list[MeshPoint]
     borders: list[StreetBorder]
-    conflicts: list[StreetConflict]
+    conflicts: list[GridPoint]
 
 
 
@@ -417,8 +457,8 @@ class CrossroadDiscovery:
     Attributes:
         points (list[GridPoint]): Points in the interior of the crossroad.
         conflicting_points (list[GridPoint]): Conflicting points of the interior of the crossroad.
-        street_juntions (list[tuple[StreetDiscovery, MeshPoint]]): List of adjacentStreetDiscoveries with their junction points (parts of Mesh) binding the StreetDiscovery to the crossroad.
+        street_junctions (list[tuple[StreetDiscovery, MeshPoint]]): List of adjacentStreetDiscoveries with their junction points (parts of Mesh) binding the StreetDiscovery to the crossroad.
     """
     points: list[GridPoint]
     conflicting_points: list[GridPoint]
-    street_juntions: list[tuple[StreetDiscovery, MeshPoint]]
+    street_junctions: list[tuple[StreetDiscovery, MeshPoint]]

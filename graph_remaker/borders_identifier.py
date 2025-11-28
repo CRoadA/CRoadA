@@ -25,7 +25,7 @@ def _queue_neighbors_if_necessary(node: BFSGridNode, grid_part, queue: list[BFSG
         # queued are points which are:
         # * normal street points, if they have not been already visited
         # * border points (always), since they may be reached from different
-        # borders what means, that these borders need to be merged
+        # borders, what means, that these borders need to be merged
         if grid_part[y, x, GRID_INDICES.IS_STREET] == 1 and (n_y, n_x) not in visited:
             queue.append((point, (n_y, n_x)))
         elif is_border_point(grid_part, (n_y, n_x)):
