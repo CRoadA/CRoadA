@@ -7,7 +7,7 @@ from typing import Tuple
 
 from grid_manager import Grid, GRID_INDICES, GridManager
 
-class Trener():
+class Trainer():
     # model:
 
     def __init__(self, model, files: list[str]):
@@ -89,7 +89,7 @@ class Trener():
 class BatchSequence(Sequence):
     """Keras Sequence that yields a batch of cuts from possibly different files.
     Using Sequence improves performance by enabling the possibility of multi-threading and pre-fetching of data."""
-    def __init__(self, trainer: Trener, number_of_batches: int, batch_size: int, cut_size: Tuple[int, int]):
+    def __init__(self, trainer: Trainer, number_of_batches: int, batch_size: int, cut_size: Tuple[int, int]):
         self._files = trainer._files
         self._number_of_batches = number_of_batches
         self._batch_size = batch_size
