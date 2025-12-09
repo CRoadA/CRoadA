@@ -7,6 +7,7 @@ from enum import Enum
 import math
 import sys
 import copy
+from typing import TypeVar, Generic
 
 class GRID_INDICES(Enum):
     IS_STREET = 0
@@ -43,8 +44,9 @@ class GridFileMetadata():
     metadata_bytes: int
 
     
+GridType = TypeVar('GridType', np.ndarray)
 
-class GridManager():
+class GridManager(Generic[GridType]):
     _file_name: str
     _data_dir: str
 
@@ -71,10 +73,10 @@ class GridManager():
         self._create_file(rows_number, columns_number, upper_left_longitude, upper_left_latitude, grid_density, segment_h, segment_w)
         self._metadata = self._read_metadata()
 
-    def write_segment(self, segment: Grid, segment_row: int, segment_col: int):
+    def write_segment(self, segment: GridType, segment_row: int, segment_col: int):
         """Write segment of grid to a file. General-purpose, file-format-agnostic function.
         Args:
-            segment (Grid): Grid segment.
+            segment (GridType): Grid segment.
             segment_row (int): 0-based row index of the segment (in terms of segments, not the grids columns).
             segment_col (int): 0-based column index of the segment (in terms of segments, not the grids columns).
         """
@@ -84,7 +86,7 @@ class GridManager():
         else:
             raise ValueError(f"Unsupported file version {self._metadata.version}")
         
-    def read_segment(self, segment_row: int, segment_col: int) -> Grid:
+    def read_segment(self, segment_row: int, segment_col: int) -> GridType:
         """Read segment from given file.
         Args:
             segment_row (int): 0-based row index of the segment (in terms of segments, not the grids columns).
@@ -188,7 +190,7 @@ class GridManager():
             file.seek(metadata_bytes + rows_number * columns_number * CELL_SIZE - 1)
             file.write('\0')
 
-    def _write_segment_v1(self, segment: Grid, segment_row: int, segment_col: int):
+    def _write_segment_v1(self, segment: GridType, segment_row: int, segment_col: int):
 
         self._assert_arguments_v1(segment_row, segment_col)
 
@@ -228,7 +230,7 @@ class GridManager():
             file.seek(self._coords_to_file_position(segment_row, segment_col))
             segment.astype(np.float32).tofile(file)
 
-    def _read_segment_v1(self, segment_row: int, segment_col: int) -> Grid:
+    def _read_segment_v1(self, segment_row: int, segment_col: int) -> GridType:
 
         self._assert_arguments_v1(segment_row, segment_col)
 

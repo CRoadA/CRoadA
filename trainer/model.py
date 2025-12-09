@@ -2,11 +2,14 @@ from abc import ABC
 
 import numpy as np
 from typing import Any
-from grid_manager import Grid, GRID_INDICES
+from grid_manager import GRID_INDICES, GridManager
 from enum import Enum
 
-TraingingGrid = np.ndarray[(Any, Any, 3), np.float64]
+InputGrid = np.ndarray[(Any, Any, 3), np.float64]
 """Like normal Grid, but with bools indicating, if it should be changed (the 0-th coordinate of the thrid dimension). If it is False, then the IS_STREET bool is treated as zero."""
+
+OutputGrid = np.ndarray[(Any, Any, 3), np.float64]
+"""Like normal grid, but next to IS_STREET and ALTITUDE, it contains also IS_RESIDUAL value."""
 
 class TRAINING_GRID_INDICES(Enum):
     IS_PREDICTED = 0
@@ -15,7 +18,7 @@ class TRAINING_GRID_INDICES(Enum):
 
 class Model(ABC):
 
-    def predict(self, input: TraingingGrid) -> Grid:
+    def predict(self, input: GridManager[InputGrid]) -> GridManager[OutputGrid]:
         """Predicts grid for given input.
 
         Parameters
@@ -30,7 +33,7 @@ class Model(ABC):
         """
         raise NotImplementedError()
     
-    def fit(self, input: TraingingGrid, output: Grid):
+    def fit(self, input: GridManager[InputGrid], output: GridManager[OutputGrid]):
         """Fit model to the given data.
 
         Parameters
@@ -42,7 +45,7 @@ class Model(ABC):
         """
         raise NotImplementedError()
     
-    def _clean_input(self, input: TraingingGrid) -> TraingingGrid:
+    def _clean_input(self, input: InputGrid) -> InputGrid:
         """Cleans input grid from IS_STREET data, where IS_PREDICTED flag is on.
 
         Parameters
@@ -65,7 +68,7 @@ class Model(ABC):
 
         return result
     
-    def _clean_output(self, input: TraingingGrid, output: Grid) -> TraingingGrid:
+    def _clean_output(self, input: InputGrid, output: OutputGrid) -> OutputGrid:
         """Cleans output grid from modifications, where IS_PREDICTED flag is off.
 
         Parameters
