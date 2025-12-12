@@ -1,13 +1,17 @@
 from grid_manager import GridManager
-from scraper.grid_builder import GridBuilder 
-from scraper.rasterizer import Rasterizer
+try:
+    from scraper.grid_builder import GridBuilder
+    from scraper.rasterizer import Rasterizer
+except ImportError:
+    pass
 import numpy as np
 import math
 import os
 import srtm
+from pyproj import Transformer
+
 
 class DataLoader():
-
     grid_density: float
     segment_h: int
     segment_w: int
@@ -25,7 +29,6 @@ class DataLoader():
         self.segment_w = segment_w
         self.data_dir = data_dir
 
-
     def load_city_grid(self, city: str, file_name: str) -> GridManager:
         """Load city grid to a given file.
         Args:
@@ -38,39 +41,54 @@ class DataLoader():
             """
         if os.path.exists(os.path.join(self.data_dir, file_name)):
             raise FileExistsError(f"File: {file_name} already exists in {self.data_dir} directory")
-        
+
         builder = GridBuilder()
         gdf_edges = builder.get_city_roads(city)
         min_x, min_y, max_x, max_y = gdf_edges.total_bounds
-        columns_number = max_x - min_x
-        rows_number = max_y - min_y
 
-        segment_rows = math.ceil((rows_number)/(self.segment_h * self.grid_density))
-        segment_cols = math.ceil((columns_number)/(self.segment_w * self.grid_density))
-        grid_manager = GridManager(file_name, rows_number=int(rows_number), columns_number=int(columns_number), 
-                                   grid_density = self.grid_density, segment_h=self.segment_h, segment_w=self.segment_w, 
-                                   data_dir=self.data_dir, upper_left_longitude=max_x, upper_left_latitude=max_y)
+        columns_number = math.ceil((max_x - min_x) / self.grid_density)
+        rows_number = math.ceil((max_y - min_y) / self.grid_density)
+
+        segment_rows = math.ceil((rows_number) / self.segment_h)
+        segment_cols = math.ceil((columns_number) / self.segment_w)
+
+        grid_manager = GridManager(file_name, rows_number=int(rows_number), columns_number=int(columns_number),
+                                   grid_density=self.grid_density, segment_h=self.segment_h, segment_w=self.segment_w,
+                                   data_dir=self.data_dir, upper_left_longitude=min_x, upper_left_latitude=max_y)
         print(f"Height: {int(rows_number)}, Width: {int(columns_number)}, rows: {segment_rows}, cols: {segment_cols}")
 
         rasterizer = Rasterizer()
         for i in range(segment_rows):
             for j in range(segment_cols):
-                grid = rasterizer.rasterize_segment_from_indexes(gdf_edges=gdf_edges, indexes=(i, j), size_h=self.segment_h, size_w=self.segment_w, pixel_size=self.grid_density)
-                print(f"Segment: {i}, {j}")
-                print(f"Grid segment shape: {grid.shape}")
-                grid_manager.write_segment(grid, i, j)
+                grid_2d = rasterizer.rasterize_segment_from_indexes(gdf_edges=gdf_edges, indexes=(i, j),
+                                                                    size_h=self.segment_h, size_w=self.segment_w,
+                                                                    pixel_size=self.grid_density)
+
+                expected_h = self.segment_h
+                if i == segment_rows - 1:
+                    expected_h = rows_number % self.segment_h or self.segment_h
+
+                expected_w = self.segment_w
+                if j == segment_cols - 1:
+                    expected_w = columns_number % self.segment_w or self.segment_w
+
+                grid_3d = np.zeros((expected_h, expected_w, 2), dtype=np.float32)
+
+                src_h, src_w = grid_2d.shape
+                copy_h = min(src_h, expected_h)
+                copy_w = min(src_w, expected_w)
+
+                grid_3d[0:copy_h, 0:copy_w, 0] = grid_2d[0:copy_h, 0:copy_w]
+
+                print(
+                    f"Segment: {i}, {j} -> Expected: {expected_h}x{expected_w}, Got: {src_h}x{src_w}, Saved: {grid_3d.shape}")
+                grid_manager.write_segment(grid_3d, i, j)
+
         return grid_manager
 
     def add_elevation_to_grid(self, grid_manager: GridManager):
         """
         Enriches the existing grid with elevation data retrieved from NASA SRTM.
-
-        This method iterates through grid segments, converts local map coordinates
-        (e.g., UTM EPSG:32634) to WGS84 (Lat/Lon) if necessary, queries the SRTM
-        database for altitude, and updates the grid files.
-
-        Args:
-            grid_manager (GridManager): The manager object handling grid file I/O.
         """
         import srtm
         from pyproj import Transformer
@@ -81,8 +99,6 @@ class DataLoader():
 
         is_metric = not (-180 <= meta.upper_left_longitude <= 180)
         transformer = None
-
-
 
         if is_metric:
             print(f"Metric coordinates detected (X={meta.upper_left_longitude:.2f}). "
@@ -100,41 +116,31 @@ class DataLoader():
             for col_idx in range(segments_cols):
                 segment = grid_manager.read_segment(row_idx, col_idx)
 
-                h, w = segment.shape[:2]
+                h, w, _ = segment.shape
 
-                height_map = np.zeros((h, w), dtype=np.float32)
+                start_lat = meta.upper_left_latitude - (row_idx * meta.segment_h * meta.grid_density)
+                start_lon = meta.upper_left_longitude + (col_idx * meta.segment_w * meta.grid_density)
 
                 for y in range(h):
-                    global_row = row_idx * meta.segment_h + y
-                    current_y_map = meta.upper_left_latitude - (global_row * meta.grid_density)
+                    current_y_map = start_lat - (y * meta.grid_density)
 
                     for x in range(w):
-                        global_col = col_idx * meta.segment_w + x
-                        current_x_map = meta.upper_left_longitude + (global_col * meta.grid_density)
+                        current_x_map = start_lon + (x * meta.grid_density)
 
                         if transformer:
                             lon, lat = transformer.transform(current_x_map, current_y_map)
                         else:
                             lon, lat = current_x_map, current_y_map
 
-                        height_map[y, x] = self._get_altitude_source(lat, lon, geo_data)
+                        segment[y, x, 1] = self._get_altitude_source(lat, lon, geo_data)
 
-                segment[:, :, 1] = height_map
                 grid_manager.write_segment(segment, row_idx, col_idx)
 
-                print(f"Segment [{row_idx}, {col_idx}] saved. Max elevation: {np.max(height_map):.2f} m")
+                print(f"Segment [{row_idx}, {col_idx}] saved. Max elevation: {np.max(segment[:, :, 1]):.2f} m")
 
     def _get_altitude_source(self, lat: float, lon: float, geo_data=None) -> float:
         """
         Safely retrieves elevation from the SRTM data source.
-
-        Args:
-            lat (float): Latitude in degrees.
-            lon (float): Longitude in degrees.
-            geo_data: The SRTM data object.
-
-        Returns:
-            float: Elevation in meters, or 0.0 if data is missing or invalid.
         """
         if geo_data is None:
             return 0.0

@@ -1,22 +1,24 @@
 import pickle
 import os
 import numpy as np
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar, Generic
 from dataclasses import dataclass
 from enum import Enum
 import math
 import sys
 import copy
-from typing import TypeVar, Generic
+
 
 class GRID_INDICES(Enum):
     IS_STREET = 0
     ALTITUDE = 1
 
+
 METADATA_SEPARATOR = ";"
 
-Grid = np.ndarray[(Any, Any, Any), Any] # point on Grid
+Grid = np.ndarray[(Any, Any, 2), Any]  # point on Grid (row, col, value_index)
 """Type of numpy array with points grid (row, col, value_index). Value_index should be taken from GRID_INDICES."""
+
 
 @dataclass
 class GridFileMetadata():
@@ -43,8 +45,9 @@ class GridFileMetadata():
     byteorder: Literal["little", "big"]
     metadata_bytes: int
 
-    
-GridType = TypeVar('GridType', np.ndarray)
+
+GridType = TypeVar('GridType', bound=np.ndarray)
+
 
 class GridManager(Generic[GridType]):
     _file_name: str
@@ -52,7 +55,9 @@ class GridManager(Generic[GridType]):
 
     _metadata: GridFileMetadata
 
-    def __init__(self, file_name: str, rows_number: int | None = None, columns_number: int | None = None, upper_left_longitude: float | None = None, upper_left_latitude: float | None = None, grid_density: float | None = 1, segment_h: int = 5000, segment_w: int = 5000, data_dir: str = "grids"):
+    def __init__(self, file_name: str, rows_number: int | None = None, columns_number: int | None = None,
+                 upper_left_longitude: float | None = None, upper_left_latitude: float | None = None,
+                 grid_density: float | None = 1, segment_h: int = 5000, segment_w: int = 5000, data_dir: str = "grids"):
         """Create GridManager, which manages reading and writing to a specific grid file.
         Args:
             file_name (str): File name.
@@ -70,7 +75,11 @@ class GridManager(Generic[GridType]):
         self._file_name = file_name
         self._data_dir = data_dir
 
-        self._create_file(rows_number, columns_number, upper_left_longitude, upper_left_latitude, grid_density, segment_h, segment_w)
+        if not os.path.exists(self._data_dir):
+            os.makedirs(self._data_dir)
+
+        self._create_file(rows_number, columns_number, upper_left_longitude, upper_left_latitude, grid_density,
+                          segment_h, segment_w)
         self._metadata = self._read_metadata()
 
     def write_segment(self, segment: GridType, segment_row: int, segment_col: int):
@@ -85,7 +94,7 @@ class GridManager(Generic[GridType]):
             self._write_segment_v1(segment, segment_row, segment_col)
         else:
             raise ValueError(f"Unsupported file version {self._metadata.version}")
-        
+
     def read_segment(self, segment_row: int, segment_col: int) -> GridType:
         """Read segment from given file.
         Args:
@@ -96,7 +105,7 @@ class GridManager(Generic[GridType]):
             return self._read_segment_v1(segment_row, segment_col)
         else:
             raise ValueError(f"Unsupported file version {self._metadata.version}")
-        
+
     def _read_metadata(self) -> GridFileMetadata:
         """Read grid file metadata.
         Args:
@@ -107,29 +116,30 @@ class GridManager(Generic[GridType]):
         """
         DESIRED_METADATA_NUMBER = 9
         with open(os.path.join(self._data_dir, self._file_name), "r", encoding="utf-8") as file:
-            first_line = file.readline()[:-1] # without \n
+            first_line = file.readline()[:-1]  # without \n
             metadata_bytes = file.tell()
             splitted = first_line.split(METADATA_SEPARATOR)
 
-            assert len(splitted) == DESIRED_METADATA_NUMBER, f"Metadata line in the file is of wrong length {len(splitted)} instead of desired {DESIRED_METADATA_NUMBER}. Found metadata values: {splitted}"
+            assert len(
+                splitted) == DESIRED_METADATA_NUMBER, f"Metadata line in the file is of wrong length {len(splitted)} instead of desired {DESIRED_METADATA_NUMBER}. Found metadata values: {splitted}"
 
             result = [
-                int(splitted[0]), # version
-                int(splitted[1]), # rows_number
-                int(splitted[2]), # cols_number
-                float(splitted[3]), # upper_left_longitude
-                float(splitted[4]), # upper_left_latitude
-                float(splitted[5]), # grid_density
-                int(splitted[6]), # segment_h
-                int(splitted[7]), # segment_w
-                splitted[8] # byteorder
+                int(splitted[0]),  # version
+                int(splitted[1]),  # rows_number
+                int(splitted[2]),  # cols_number
+                float(splitted[3]),  # upper_left_longitude
+                float(splitted[4]),  # upper_left_latitude
+                float(splitted[5]),  # grid_density
+                int(splitted[6]),  # segment_h
+                int(splitted[7]),  # segment_w
+                splitted[8]  # byteorder
             ]
             result += [metadata_bytes]
-            
-            return GridFileMetadata(*result)
-    
 
-    def _create_file(self, rows_number: int, columns_number: int, upper_left_longitude: float, upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int):
+            return GridFileMetadata(*result)
+
+    def _create_file(self, rows_number: int, columns_number: int, upper_left_longitude: float,
+                     upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int):
         """Creates a file for grid. If the file already exists, uses current one, if the metadata match.
          Args:
             rows_number (int): Number of rows of the whole gird (not just the segment).
@@ -145,37 +155,31 @@ class GridManager(Generic[GridType]):
             """
         if os.path.exists(os.path.join(self._data_dir, self._file_name)):
             meta = self._read_metadata()
-            
-            if rows_number is not None and rows_number != meta.rows_number:
-                raise FileExistsError(f"The file already exists and has incompatible rows number: {rows_number} with given {meta.rows_number}")
-            if columns_number is not None and columns_number != meta.columns_number:
-                raise FileExistsError(f"The file already exists and has incompatible columns number: {columns_number} with given {meta.columns_number}")
-            if upper_left_latitude is not None and upper_left_latitude != meta.upper_left_latitude:
-                raise FileExistsError(f"The file already exists and has incompatible latitude of upper-left-most point: {upper_left_latitude} with given {meta.upper_left_latitude}")
-            if upper_left_longitude is not None and upper_left_longitude != meta.upper_left_longitude:
-                raise FileExistsError(f"The file already exists and has incompatible longitude of upper-left-most point: {upper_left_longitude} with given {meta.upper_left_longitude}")
-            if grid_density is not None and grid_density != meta.grid_density:
-                raise FileExistsError(f"The file already exists and has incompatible grid density: {grid_density} with given {meta.grid_density}")
-            if segment_h is not None and segment_h != meta.segment_h:
-                raise FileExistsError(f"The file already exists and has incompatible segment height: {segment_h} with given {meta.segment_h}")
-            if segment_w is not None and segment_w != meta.segment_w:
-                raise FileExistsError(f"The file already exists and has incompatible segment width: {segment_w} with given {meta.segment_w}")
-            # metadata matches -> nothing to create
-            return
-        
-        if None in [rows_number, columns_number, segment_h, segment_w]:
-            raise FileNotFoundError(f"File was not found and not all arguments required for creating a new one were provided.")
-        
-        self._create_file_v1(rows_number, columns_number, upper_left_longitude, upper_left_latitude, grid_density, segment_h, segment_w)
 
-    def _create_file_v1(self, rows_number: int, columns_number: int, upper_left_longitude: float, upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int):
+            if rows_number is not None and rows_number != meta.rows_number:
+                raise FileExistsError(
+                    f"The file already exists and has incompatible rows number: {rows_number} with given {meta.rows_number}")
+            if columns_number is not None and columns_number != meta.columns_number:
+                raise FileExistsError(
+                    f"The file already exists and has incompatible columns number: {columns_number} with given {meta.columns_number}")
+            return
+
+        if None in [rows_number, columns_number, segment_h, segment_w]:
+            raise FileNotFoundError(
+                f"File was not found and not all arguments required for creating a new one were provided.")
+
+        self._create_file_v1(rows_number, columns_number, upper_left_longitude, upper_left_latitude, grid_density,
+                             segment_h, segment_w)
+
+    def _create_file_v1(self, rows_number: int, columns_number: int, upper_left_longitude: float,
+                        upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int):
         """Create a file for points grid. File has the target size from the beginning (does not grow as a result of saving new segments)."""
         metadata_bytes = 0
-        CELL_SIZE = 8 # in bytes
+        CELL_SIZE = 8  # ZMIANA: 8 bajtów (2 kanały * 4 bajty float32)
 
         with open(os.path.join(self._data_dir, self._file_name), "w", encoding="utf-8") as file:
             file.write(METADATA_SEPARATOR.join(map(str, [
-                1, # version
+                1,  # version
                 rows_number,
                 columns_number,
                 upper_left_longitude,
@@ -194,36 +198,30 @@ class GridManager(Generic[GridType]):
 
         self._assert_arguments_v1(segment_row, segment_col)
 
-        # verify shape of given segment
+        if len(segment.shape) == 2:
+            h, w = segment.shape
+            new_segment = np.zeros((h, w, 2), dtype=np.float32)
+            new_segment[:, :, 0] = segment
+            segment = new_segment
+
         segments_n_vertically = math.ceil(self._metadata.rows_number / self._metadata.segment_h)
         segments_n_horizontally = math.ceil(self._metadata.columns_number / self._metadata.segment_w)
-        # given_segment_h, given_segment_w, _ = segment.shape
-        if len(segment.shape) == 3:
-            given_segment_h, given_segment_w, _ = segment.shape
-        else:
-            given_segment_h, given_segment_w = segment.shape
 
-
+        given_segment_h, given_segment_w, _ = segment.shape
 
         rows_n = self._metadata.rows_number
         cols_n = self._metadata.columns_number
 
-        # for segment's height
-        if rows_n % self._metadata.segment_h == 0 \
-            or segment_row < segments_n_vertically - 1: # if the segment shape should follow the format (typical case)
+        if segment_row < segments_n_vertically - 1:
             assert given_segment_h == self._metadata.segment_h, f"Given segment has wrong height {given_segment_h} instead of desired {self._metadata.segment_h}."
-        else: # when that is the last row of a grid, it is not a multiplicity of format_segment_h
-            # the last segment has to be smaller
-            desired_height = rows_n - (segments_n_vertically - 1) * self._metadata.segment_h
+        else:
+            desired_height = rows_n % self._metadata.segment_h or self._metadata.segment_h
             assert given_segment_h == desired_height, f"Given segment has wrong height {given_segment_h}. It belongs to the last row, thus its height is expected to be {desired_height}."
-        
-        # for segment's width
-        if cols_n % self._metadata.segment_w == 0 \
-            or segment_col < segments_n_horizontally - 1: # if the segment shape should follow the format (typical case)
+
+        if segment_col < segments_n_horizontally - 1:
             assert given_segment_w == self._metadata.segment_w, f"Given segment has wrong width {given_segment_w} instead of desired {self._metadata.segment_w}."
-        else: # when that is the last column of a grid not being a multiplicity of format_segment_w
-            # the last segment has to be smaller
-            desired_width = cols_n - (segments_n_horizontally - 1) * self._metadata.segment_w
+        else:
+            desired_width = cols_n % self._metadata.segment_w or self._metadata.segment_w
             assert given_segment_w == desired_width, f"Given segment has wrong width {given_segment_w}. It belongs to the last column, thus its width is expected to be {desired_width}."
 
         with open(os.path.join(self._data_dir, self._file_name), "rb+") as file:
@@ -240,15 +238,15 @@ class GridManager(Generic[GridType]):
         segments_n_vertically = math.ceil(rows_n / self._metadata.segment_h)
         segments_n_horizontally = math.ceil(cols_n / self._metadata.segment_w)
 
+        h = self._metadata.segment_h
+        if segment_row == segments_n_vertically - 1:
+            h = rows_n % self._metadata.segment_h or self._metadata.segment_h
+
+        w = self._metadata.segment_w
         if segment_col == segments_n_horizontally - 1:
-            if segment_row == segments_n_vertically - 1:
-                SEEKED_SEGMENT_SHAPE = (rows_n % self._metadata.segment_h, cols_n % self._metadata.segment_w, 2)
-            else:
-                SEEKED_SEGMENT_SHAPE = (self._metadata.segment_h, cols_n % self._metadata.segment_w, 2)
-        elif segment_row == segments_n_vertically - 1:
-            SEEKED_SEGMENT_SHAPE = (rows_n % self._metadata.segment_h, self._metadata.segment_w, 2)
-        else:
-            SEEKED_SEGMENT_SHAPE = (self._metadata.segment_h, self._metadata.segment_w, 2)
+            w = cols_n % self._metadata.segment_w or self._metadata.segment_w
+
+        SEEKED_SEGMENT_SHAPE = (h, w, 2)
 
         with open(os.path.join(self._data_dir, self._file_name), "rb") as file:
             file.seek(self._coords_to_file_position(segment_row, segment_col))
@@ -262,7 +260,8 @@ class GridManager(Generic[GridType]):
         segments_n_vertically = math.ceil(self._metadata.rows_number / self._metadata.segment_h)
         segments_n_horizontally = math.ceil(self._metadata.columns_number / self._metadata.segment_w)
 
-        assert (segment_row, segment_col) < (segments_n_vertically, segments_n_horizontally), f"Given segment is out of bound. Grid consists of {segments_n_vertically}x{segments_n_horizontally} segments, but given coordinates are ({segment_row}, {segment_col})."
+        assert (segment_row, segment_col) < (segments_n_vertically,
+                                             segments_n_horizontally), f"Given segment is out of bound. Grid consists of {segments_n_vertically}x{segments_n_horizontally} segments, but given coordinates are ({segment_row}, {segment_col})."
 
     def _coords_to_file_position(self, segment_row: int, segment_column: int) -> int:
         """Compute the absolute byte offset in the file where a given segment starts.
@@ -279,7 +278,6 @@ class GridManager(Generic[GridType]):
         Returns:
             int: Byte offset from the start of the file where the requested segment begins.
         """
-        # Validate indices and version
         self._assert_arguments_v1(segment_row, segment_column)
 
         rows_n = self._metadata.rows_number
@@ -287,31 +285,30 @@ class GridManager(Generic[GridType]):
         seg_h = self._metadata.segment_h
         seg_w = self._metadata.segment_w
 
-        CELL_SIZE = 8  # bytes per stored value
+        CELL_SIZE = 8  # bytes per stored value (2 * float32)
 
-        # Size of a "full" segment (seg_h x seg_w) in bytes
         full_segment_bytes = seg_h * seg_w * CELL_SIZE
 
-        # How many full segments fit in a single grid row and whether there is a remainder
         full_segments_per_row = cols_n // seg_w
         remainder_cols = cols_n % seg_w
-        remainder_segment_bytes = seg_h * remainder_cols * CELL_SIZE
 
-        # Total bytes that make up one row of segments
+        remainder_segment_bytes = 0
+        if remainder_cols > 0:
+            remainder_segment_bytes = seg_h * remainder_cols * CELL_SIZE
+
         row_bytes = full_segment_bytes * full_segments_per_row + remainder_segment_bytes
 
-        full_rows_part_bytes = (rows_n // seg_h) * row_bytes # size of segments without the last row
-        partial_row_segment_bytes = (rows_n % seg_h) * seg_w * CELL_SIZE
+        position = self._metadata.metadata_bytes + segment_row * row_bytes
 
-        # Compute position: metadata header + rows before + segments in the target row
-        if segment_row < rows_n // seg_h: # if not the last row (or last when last is normal)
-            position = self._metadata.metadata_bytes + segment_row * row_bytes + segment_column * full_segment_bytes
-        else: # the last partial row
-            position = self._metadata.metadata_bytes + full_rows_part_bytes + segment_column * partial_row_segment_bytes
-        # the last double-partial segment in the corner never needs to be traversed
+        current_row_h = seg_h
+        segments_vert = math.ceil(rows_n / seg_h)
+        if segment_row == segments_vert - 1:
+            current_row_h = rows_n % seg_h or seg_h  # obsługa 0
+
+        position += segment_column * (current_row_h * seg_w * CELL_SIZE)
 
         return position
-    
+
     def get_metadata(self) -> GridFileMetadata:
         """Get object metadata.
 
@@ -321,4 +318,3 @@ class GridManager(Generic[GridType]):
             Independent copy of file metadata object.
         """
         return copy.deepcopy(self._metadata)
-    
