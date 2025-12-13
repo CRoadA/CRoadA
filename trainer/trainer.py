@@ -96,6 +96,10 @@ class CutIterator:
         for _ in range(self._max_x * self._max_y):
             # Choose random cut size
             cut_size = random.choice(self._cut_size)
+            if cut_size[0] > self._grid_rows or cut_size[1] > self._grid_cols:
+                # TODO
+                cut_size = (self._grid_rows, self._grid_cols)
+
             self._max_x = self._grid_rows - cut_size[0]  # max starting x for cut
             self._max_y = self._grid_cols - cut_size[1]  # max starting y for cut
 
