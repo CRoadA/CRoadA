@@ -1,0 +1,46 @@
+QMainWindow {
+    background-color: #f0f2f5;
+}
+
+QFrame {
+    background-color: #ffffff;
+}
+
+
+QLabel#HeaderLabel {
+    font-size: 24px;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+QPushButton {
+    background-color: #3498db;
+    color: white;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 10px;
+}
+QPushButton:hover {
+    background-color: #2980b9;
+}
+QPushButton:pressed {
+    background-color: #1c6ea4;
+}
+
+QFrame#ResultsFrame {
+    background-color: #ecf0f1;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+QSplitter::handle {
+    background-color: #bdc3c7;
+    width: 2px;
+}
+
+QLabel {
+    color: black;
+}

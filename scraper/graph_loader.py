@@ -1,16 +1,22 @@
 import numpy as np
 import osmnx as ox
-from shapely import LineString
+from shapely import LineString, Polygon
 import geopandas as gpd
+import networkx as nx
 
 class GraphLoader():
-    def __init__(self, poland_crs = 2180, basic_crs = 4326):
+    def __init__(self, poland_crs : int = 2180, basic_crs : int = 4326):
         self.poland_crs = poland_crs
         self.basic_crs = basic_crs
 
 
-    def load_graph(self, city_name):
+    def load_graph(self, city_name : str) -> nx.MultiDiGraph:
         graph = ox.graph.graph_from_place(city_name, network_type="drive", simplify=False)
+        return graph
+    
+
+    def load_graph_from_polygon(self, area : Polygon):
+        graph = ox.graph_from_polygon(area, network_type="drive", simplify=False)
         return graph
     
 
@@ -156,8 +162,11 @@ class GraphLoader():
         return edges_info
     
 
-    def convert_to_gdf(self, edges):
+    def convert_to_gdf(self, edges : list[dict], new_crs : int | None) -> gpd.GeoDataFrame:
         gdf_edges = gpd.GeoDataFrame(edges, crs=self.basic_crs)
-        gdf_edges["geometry"] = gdf_edges["geometry"].to_crs(epsg=self.poland_crs)
+        if new_crs is None:
+            new_crs = self.poland_crs
+
+        gdf_edges["geometry"] = gdf_edges["geometry"].to_crs(epsg=new_crs)
         return gdf_edges
         

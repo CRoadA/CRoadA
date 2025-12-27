@@ -44,7 +44,7 @@ class GridFileMetadata():
     metadata_bytes: int
 
     
-GridType = TypeVar('GridType', np.ndarray)
+GridType = TypeVar('GridType', bound=np.ndarray)
 
 class GridManager(Generic[GridType]):
     _file_name: str

@@ -1,0 +1,12 @@
+div {
+    display: flex;
+    background-color: black;
+    opacity: 0.5;
+}
+
+button {
+    height: 30px;
+    width: 30px;
+    background-color: gray;
+    border: 2px dashed rgb(86, 86, 86);
+}

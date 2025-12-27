@@ -5,6 +5,11 @@ import numpy as np
 import math
 import os
 import srtm
+from shapely import Polygon
+from geopy.geocoders import Nominatim
+from unidecode import unidecode 
+from collections.abc import Callable
+from scraper.locator import Locator
 
 class DataLoader():
 
@@ -26,19 +31,33 @@ class DataLoader():
         self.data_dir = data_dir
 
 
-    def load_city_grid(self, city: str, file_name: str) -> GridManager:
+    def load_city_grid(self, city: str | Polygon, file_name: str | None = None, on_progress : Callable[[float | None, str], None] | None = None) -> GridManager:
         """Load city grid to a given file.
         Args:
-            city (str): String for identification of the city (OSM-like).
-            file_name (str): Target file name.
+            city (str): String for identification of the city (OSM-like) or (Polygon): Polygon for the city area.
+            file_name (str): Target file name, if None file_name will be extracted from city name.
         Returns:
             grid_manager (GridManager): Object handling partial load/write to the specified file.
         Raises:
             FileExistsError: if file with specified name already exists.
             """
+        if on_progress:
+            on_progress(None, "Checking correctness of the marked area")
+
+        if file_name is None:
+            locator = Locator()
+            city_name = locator.get_city_name(city)
+            if city_name is None:
+                raise ValueError("Marked area is not a city.")
+            
+            file_name = f"{unidecode(city_name).lower().replace(" ", "_")}.dat"
+
         if os.path.exists(os.path.join(self.data_dir, file_name)):
-            raise FileExistsError(f"File: {file_name} already exists in {self.data_dir} directory")
+            raise FileExistsError(f"File: {file_name} already exists in {self.data_dir} directory", city_name)
         
+        if on_progress:
+            on_progress(None, "Getting roads data.")
+
         builder = GridBuilder()
         gdf_edges = builder.get_city_roads(city)
         min_x, min_y, max_x, max_y = gdf_edges.total_bounds
@@ -51,7 +70,8 @@ class DataLoader():
                                    grid_density = self.grid_density, segment_h=self.segment_h, segment_w=self.segment_w, 
                                    data_dir=self.data_dir, upper_left_longitude=max_x, upper_left_latitude=max_y)
         print(f"Height: {int(rows_number)}, Width: {int(columns_number)}, rows: {segment_rows}, cols: {segment_cols}")
-
+        
+        processed_segments = 0
         rasterizer = Rasterizer()
         for i in range(segment_rows):
             for j in range(segment_cols):
@@ -59,7 +79,15 @@ class DataLoader():
                 print(f"Segment: {i}, {j}")
                 print(f"Grid segment shape: {grid.shape}")
                 grid_manager.write_segment(grid, i, j)
+                processed_segments += 1
+                if on_progress:
+                    on_progress(processed_segments/(segment_cols*segment_rows), "Saving area")
+
+        if on_progress:
+            on_progress(None, "Marked area has been saved successfully")
+
         return grid_manager
+    
 
     def add_elevation_to_grid(self, grid_manager: GridManager):
         """

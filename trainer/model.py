@@ -13,8 +13,8 @@ OutputGrid = np.ndarray[(Any, Any, 3), np.float64]
 
 class TRAINING_GRID_INDICES(Enum):
     IS_PREDICTED = 0
-    IS_STREET = GRID_INDICES.IS_STREET + 1
-    ALTITUDE = GRID_INDICES.ALTITUDE + 1
+    IS_STREET = GRID_INDICES.IS_STREET.value + 1
+    ALTITUDE = GRID_INDICES.ALTITUDE.value + 1
 
 class Model(ABC):
 

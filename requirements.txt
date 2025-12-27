@@ -1,0 +1,14 @@
+geopandas==1.1.1
+geopy==2.4.1
+matplotlib==3.10.8
+networkx==3.5
+numpy==2.4.0
+osmnx==2.0.7
+pyproj==3.7.2
+PyQt6==6.10.1
+qasync==0.28.0
+rasterio==1.4.3
+Shapely==2.1.2
+srtm==0.2.0
+tensorflow==2.20.0
+Unidecode==1.4.0

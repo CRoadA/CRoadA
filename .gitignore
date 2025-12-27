@@ -1,6 +1,7 @@
 /grids
 
 env
+venv
 cache
 __pycache__
 
