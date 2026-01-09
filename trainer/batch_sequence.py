@@ -1,15 +1,12 @@
-from typing import Iterator
+from typing import Any, Iterator
 from dataclasses import dataclass
 import numpy as np
-import tensorflow as tf
 import random
 import math
-
+import tensorflow as tf
 Sequence = tf.keras.utils.Sequence
-import numpy as np
 
-from grid_manager import Grid, GridManager
-from typing import Any
+from CRoadA.grid_manager import Grid, GridManager
 
 InputGrid = np.ndarray[(Any, Any, 3), np.float64]
 """Like normal Grid, but with bools indicating, if it should be changed (the 0-th coordinate of the thrid dimension). If it is False, then the IS_STREET bool is treated as zero."""
