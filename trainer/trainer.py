@@ -19,13 +19,6 @@ class Trainer:
         """Perform training on model.
         Args:
             fits_count (int): Number of fits to perform."""
-
-        # batchSeq = data_types.BatchSequence(
-        #     files=list(self._files.keys()),
-        #     number_of_batches=1,
-        #     batch_size=1,
-        #     cut_size=[(32, 32), (64, 64), (128, 128)],
-        # )
         batchSeq = ClippingBatchSequence(
             batch_sequence.BatchSequence(
                 files=list(self._files.keys()),
@@ -36,5 +29,5 @@ class Trainer:
             clipping_size=256,
             input_grid_surplus=32,
         )
-        # TODO
-        # model.fit(batchSeq, epochs=fits_count) # pętla w modelu
+        # TODO: Write proper references to proper training logic elements
+        self._model.fit(batchSeq, epochs=fits_count)
