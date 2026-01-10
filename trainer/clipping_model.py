@@ -1,8 +1,10 @@
 import tensorflow as tf
+
 Sequence = tf.keras.utils.Sequence
 
 from CRoadA.trainer.model import Model
 from CRoadA.trainer.clipping_sequence import ClippingBatchSequence
+
 
 class ClippingModel(Model):
     def __init__(self):
@@ -10,11 +12,12 @@ class ClippingModel(Model):
         self._model = tf.keras.models.Sequential()
         # Model architecture here - #TODO: Define the actual architecture
         self._model.add(tf.keras.layers.InputLayer(input_shape=(None, None, 3)))
-        self._model.add(tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same'))
-        self._model.add(tf.keras.layers.Conv2D(16, 3, activation='relu', padding='same'))
-        self._model.add(tf.keras.layers.Conv2D(filters=2, kernel_size=1, activation='sigmoid', padding='same'))
+        self._model.add(tf.keras.layers.Conv2D(32, 3, activation="relu", padding="same"))
+        self._model.add(tf.keras.layers.Conv2D(16, 3, activation="relu", padding="same"))
+        self._model.add(tf.keras.layers.Conv2D(filters=2, kernel_size=1, activation="sigmoid", padding="same"))
+        self._model.compile(optimizer="adam", loss="mse")
 
-    def fit(self, input: ClippingBatchSequence):
+    def fit(self, input: ClippingBatchSequence, epochs: int = 1):
         """Fit model to the given data.
 
         Parameters
@@ -23,9 +26,8 @@ class ClippingModel(Model):
             Input batch sequence with clipped grids.
         """
         # TODO: Implement proper training logic
-        self._model.compile(optimizer='adam', loss='binary_crossentropy')
-        self._model.fit(input, epochs=10)
-    
+        self._model.fit(input, epochs=epochs)
+
     def predict(self, input):
         """Predicts grid for given input.
 

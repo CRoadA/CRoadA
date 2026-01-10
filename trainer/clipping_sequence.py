@@ -1,5 +1,6 @@
 from CRoadA.trainer.batch_sequence import *
-from CRoadA.trainer.model import Model # for clean_input()
+from CRoadA.trainer.model import Model  # for clean_input()
+
 
 class ClippingBatchSequence(Sequence):
     """Batch sequence that clips input and output grids to proper sizes for the model."""
@@ -18,38 +19,61 @@ class ClippingBatchSequence(Sequence):
         """
         self._clipping_size = clipping_size
         self._input_surplus = input_grid_surplus
-        self._batch_index = 0
         self._clipping_index = 0
-        self._batches = list(base_sequence)
+        self._base_sequence = base_sequence
 
     def __len__(self) -> int:
         result = 0
-        for batch in self._batches:
-            start_point, cut = batch[0]
-            metadata = cut.get_metadata()
+        for base_batch_index in range(len(self._base_sequence)):
+            cut_size = self._base_sequence.cut_sizes()[base_batch_index % len(self._base_sequence.cut_sizes())]
             rows_number, cols_number = (
-                metadata.rows_number - self._input_surplus,
-                metadata.columns_number - self._input_surplus,
+                cut_size[0] - self._input_surplus,
+                cut_size[1] - self._input_surplus,
             )
-            result += math.ceil(rows_number / (self._clipping_size - self._input_surplus)) * math.ceil(
-                cols_number / (self._clipping_size - self._input_surplus)
-            )
-
+            result += (
+                math.ceil(rows_number / (self._clipping_size - self._input_surplus))
+                * math.ceil(cols_number / (self._clipping_size - self._input_surplus))
+            ) * self._base_sequence.batch_size()
         return result
 
     def __getitem__(self, index: int) -> tuple[InputGrid, OutputGrid]:
+
+        result = 0
+        found = False
+        for base_batch_index in range(len(self._base_sequence)):
+            for base_batch_item_index in range(self._base_sequence.batch_size()):
+                cut_size = self._base_sequence.cut_sizes()[base_batch_index % len(self._base_sequence.cut_sizes())]
+                rows_number, cols_number = (
+                    cut_size[0] - self._input_surplus,
+                    cut_size[1] - self._input_surplus,
+                )
+                result += math.ceil(rows_number / (self._clipping_size - self._input_surplus)) * math.ceil(
+                    cols_number / (self._clipping_size - self._input_surplus)
+                )
+                if result > index:
+                    self._batches = self._base_sequence[base_batch_index]
+                    self.batch_item_index = base_batch_item_index
+                    self._clipping_index = index - (
+                        result
+                        - math.ceil(rows_number / (self._clipping_size - self._input_surplus))
+                        * math.ceil(cols_number / (self._clipping_size - self._input_surplus))
+                    )
+                    found = True
+                    break
+            if found:
+                break
+
         batch_x = []
         batch_y = []
 
-        _, cut_grid = self._batches[self._batch_index][0]
+        _, cut_grid = self._batches[self.batch_item_index]
         metadata = cut_grid.get_metadata()
         clipping_rows, clipping_cols = (
             math.ceil((metadata.rows_number - self._input_surplus) / (self._clipping_size - self._input_surplus)),
             math.ceil((metadata.columns_number - self._input_surplus) / (self._clipping_size - self._input_surplus)),
         )
 
-        for _, cut_grid in self._batches[self._batch_index]:
-            metadata = cut_grid.get_metadata()
+        for _ in range(self._base_sequence.batch_size()):
             clipping_x = self._clipping_index % clipping_cols
             clipping_y = self._clipping_index // clipping_cols
 
@@ -81,6 +105,7 @@ class ClippingBatchSequence(Sequence):
                 else:
                     clipping_x = np.hstack((clipping_x, clipping_y))
 
+            # TODO - when to clean? - (w uczeniu czasem powinien dostawać nie w pełni wyczyszczone dane czy nie?)
             clipping_x = Model.clean_input(clipping_x)
             batch_x.append(clipping_x)
             output_clipping_x = clipping_x[
@@ -88,7 +113,7 @@ class ClippingBatchSequence(Sequence):
                 int(self._input_surplus / 2) : self._clipping_size - int(self._input_surplus / 2),
                 :,
             ]
-            # TODO - adjust IS_REGIONAL value
+            # TODO - adjust IS_REGIONAL value - probably we meant local, residential roads - IS_RESIDENTIAL value
             batch_y.append(output_clipping_x[:, :, 0:2])  # only IS_STREET and ALTITUDE
 
         self._clipping_index += 1
@@ -98,4 +123,4 @@ class ClippingBatchSequence(Sequence):
             if self._batch_index >= len(self._batches):
                 self._batch_index = 0
 
-        return batch_x, batch_y
+        return np.stack(batch_x), np.stack(batch_y)

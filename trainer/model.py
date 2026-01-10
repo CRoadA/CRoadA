@@ -1,6 +1,7 @@
 from abc import ABC
 from enum import Enum
 import tensorflow as tf
+
 Sequence = tf.keras.utils.Sequence
 
 from CRoadA.grid_manager import GRID_INDICES, GridManager
@@ -20,8 +21,8 @@ class Model(ABC):
 
         Parameters
         ----------
-        input : TraingingGrid
-            Input grid. See TraingingGrid type description.
+        input : TrainingGrid
+            Input grid. See TrainingGrid type description.
 
         Returns
         -------
@@ -30,12 +31,12 @@ class Model(ABC):
         """
         raise NotImplementedError()
 
-    def fit(self, input: batch_sequence.BatchSequence):
+    def fit(self, input: batch_sequence.BatchSequence, epochs: int):
         """Fit model to the given data.
 
         Parameters
         ----------
-        input : TraingingGrid
+        input : TrainingGrid
             Input grid. See TrainingGrid type description.
         #output : Grid
             Expected output. Its size is equal the input size (except for the IS_PREDICTED dimension).
@@ -58,12 +59,12 @@ class Model(ABC):
 
         Parameters
         ----------
-        input : TraingingGrid
+        input : TrainingGrid
             Input grid.
 
         Returns
         -------
-        TraingingGrid
+        TrainingGrid
             Shallow copy of given input grid with cleaned IS_STREET values, where IS_PREDICTED is on.
         """
         result = input.copy()
@@ -76,17 +77,19 @@ class Model(ABC):
 
         return result
 
-    def _clean_output(self, input: batch_sequence.InputGrid, output: batch_sequence.OutputGrid) -> batch_sequence.OutputGrid:
+    def _clean_output(
+        self, input: batch_sequence.InputGrid, output: batch_sequence.OutputGrid
+    ) -> batch_sequence.OutputGrid:
         """Cleans output grid from modifications, where IS_PREDICTED flag is off.
 
         Parameters
         ----------
-        input : TraingingGrid
+        input : TrainingGrid
             Original input grid.
 
         Returns
         -------
-        TraingingGrid
+        TrainingGrid
             Shallow copy of given output grid with copied data from input, where IS_PREDICTED is off.
         """
         result = output.copy()
