@@ -1,4 +1,4 @@
-from typing import Any, Iterator
+from typing import Any
 from dataclasses import dataclass
 import numpy as np
 import random
@@ -7,7 +7,7 @@ import tensorflow as tf
 
 Sequence = tf.keras.utils.Sequence
 
-from CRoadA.grid_manager import Grid, GridManager
+from CRoadA.grid_manager import GridManager
 
 InputGrid = np.ndarray[(Any, Any, 3), np.float64]
 """Like normal Grid, but with bools indicating, if it should be changed (the 0-th coordinate of the thrid dimension). If it is False, then the IS_STREET bool is treated as zero."""
@@ -35,7 +35,7 @@ class BatchSequence(Sequence):
         self._files = files
         self._cut_sizes = cut_sizes
         self._batch_size = batch_size
-        # Temporarily: one batch item -> random cut size from the given list
+        # Temporarily: one batch item -> cut size from the given list
         # OTHER POSSIBILITY: one batch -> one cut size
         self._iterators = [
             CutSequence(file=self._files[i_file], cut_sizes=cut_sizes, sequence=self) for i_file in range(batch_size)
@@ -73,7 +73,7 @@ class BatchSequence(Sequence):
 
 @dataclass
 class CutSequence(Sequence):
-    """Sequence that yields random cuts from a random file in a BatchSequence."""
+    """Sequence that yields random cuts from a file in a BatchSequence."""
 
     def __init__(self, file, cut_sizes: list[tuple[int, int]], sequence: BatchSequence):
         """
@@ -85,7 +85,6 @@ class CutSequence(Sequence):
         :param sequence: BatchSequence instance this CutSequence belongs to.
         :type sequence: BatchSequence
         """
-        #self._file_path = random.choice(list(sequence._files.keys())) # TODO - idk if this works as intended for fit not remembering the sequence - maybe should be more deterministic - MOVE RANDOMNESS OUTSIDE
         self._file_path = file
         sequence._files[self._file_path] += 1  # increment count of uses
         self._cut_sizes = cut_sizes
@@ -116,40 +115,48 @@ class CutSequence(Sequence):
         self._max_y = self._grid_cols - cut_size[1]  # max starting y for cut
 
         # Choose random starting point
-        start_x = random.randint(0, self._max_x)
-        start_y = random.randint(0, self._max_y)
+        cut_start_x = random.randint(0, self._max_x)
+        cut_start_y = random.randint(0, self._max_y)
 
-        self._already_used.append(((start_x, start_y), cut_size))
+        self._already_used.append(((cut_start_x, cut_start_y), cut_size))
 
         # Calculate end point
-        end_x = start_x + cut_size[0]
-        end_y = start_y + cut_size[1]
+        cut_end_x = cut_start_x + cut_size[0]
+        cut_end_y = cut_start_y + cut_size[1]
 
         # Determine which segments to read
-        which_segment_start_x = start_x // self._segment_rows
-        which_segment_start_y = start_y // self._segment_cols
-        which_segment_end_x = end_x // self._segment_rows
-        which_segment_end_y = end_y // self._segment_cols
+        which_segment_start_x = cut_start_x // self._segment_rows
+        which_segment_start_y = cut_start_y // self._segment_cols
+        which_segment_end_x = cut_end_x // self._segment_rows
+        which_segment_end_y = cut_end_y // self._segment_cols
 
         cut_x = np.array([])  # Grid()
         # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
         for indx_x in range(which_segment_start_x, which_segment_end_x + 1):
             for indx_y in range(which_segment_start_y, which_segment_end_y + 1):
-                # TODO - memory issue
+                # TODO - memory issue -> adjust the maximal segment size or something
                 segment_y = self._grid_manager.read_segment(indx_x, indx_y)
                 # Merge segment_y into cut_y vertically.
-                if indx_y == which_segment_start_y:
-                    cut_y = segment_y
+                if indx_x == which_segment_start_y and indx_y == which_segment_end_y:
+                    cut_y = segment_y[cut_start_y % self._segment_cols : cut_end_y % self._segment_cols , :]
+                elif indx_y == which_segment_start_y:
+                    cut_y = segment_y[cut_start_y % self._segment_cols : , :]
+                elif indx_y == which_segment_end_y:
+                    cut_y = np.vstack((cut_y, segment_y[ : cut_end_y % self._segment_cols , :]))
                 else:
                     cut_y = np.vstack((cut_y, segment_y))
 
             # Merge cut_y into cut_x horizontally.
-            if indx_x == which_segment_start_x:
-                cut_x = cut_y
+            if indx_x == which_segment_start_x and indx_y == which_segment_end_x:
+                cut_x = cut_y[cut_start_x % self._segment_rows : cut_end_x % self._segment_rows , :]
+            elif indx_x == which_segment_start_x:
+                cut_x = cut_y[cut_start_x % self._segment_rows : , :]
+            elif indx_x == which_segment_end_x:
+                cut_x = np.hstack((cut_x, cut_y[ : cut_end_x % self._segment_rows , :]))
             else:
                 cut_x = np.hstack((cut_x, cut_y))
 
-        cut_x = cut_x.resize(1, (cut_size[0], cut_size[1], cut_x.shape[2] + 1))  # is modifiable
+        cut_x = cut_x.resize(1, (cut_size[0], cut_size[1], cut_x.shape[2] + 1))  # is modifiable # TODO - check IS_PREDICTED case
         cut_segment_rows = math.ceil(
             cut_size[0] / self._grid_metadata.segment_h
         )  # number of segments in cut vertically
@@ -157,7 +164,7 @@ class CutSequence(Sequence):
             cut_size[1] / self._grid_metadata.segment_w
         )  # number of segments in cut horizontally
         cut_grid = GridManager[InputGrid](
-            f"{self._file_path}_cut_{start_x}_{start_y}_{cut_size[0]}_{cut_size[1]}.dat",
+            f"{self._file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat",
             cut_size[0],
             cut_size[1],
             0,
@@ -184,7 +191,7 @@ class CutSequence(Sequence):
                     segment_col,
                 )
 
-        return ((start_x, start_y), cut_grid)
+        return ((cut_start_x, cut_start_y), cut_grid)
 
     def count_used_start_points(self) -> int:
         """Count the number of used starting points for cuts (with duplicates)."""

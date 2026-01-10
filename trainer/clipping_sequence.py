@@ -80,13 +80,16 @@ class ClippingBatchSequence(Sequence):
             clipping_start_x = clipping_x * (self._clipping_size - self._input_surplus) - (self._input_surplus / 2)
             clipping_start_y = clipping_y * (self._clipping_size - self._input_surplus) - (self._input_surplus / 2)
 
-            segment_h, segment_w = metadata.segment_h, metadata.segment_w
+            # Calculate end point
+            clipping_end_x = clipping_start_x + self._clipping_size
+            clipping_end_y = clipping_start_y + self._clipping_size
 
+            # Determine which segments to read
+            segment_h, segment_w = metadata.segment_h, metadata.segment_w
             which_segment_start_x = clipping_start_x // segment_h
             which_segment_start_y = clipping_start_y // segment_w
-
-            which_segment_end_x = (clipping_start_x + self._clipping_size) // segment_h
-            which_segment_end_y = (clipping_start_y + self._clipping_size) // segment_w
+            which_segment_end_x = clipping_end_x // segment_h
+            which_segment_end_y = clipping_end_y // segment_w
 
             clipping_x = np.array([])  # Grid()
             # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
@@ -94,14 +97,22 @@ class ClippingBatchSequence(Sequence):
                 for indx_y in range(which_segment_start_y, which_segment_end_y + 1):
                     segment_y = cut_grid.read_segment(indx_x, indx_y)
                     # Merge segment_y into cut_y vertically.
-                    if indx_y == which_segment_start_y:
-                        clipping_y = segment_y
+                    if indx_x == which_segment_start_y and indx_y == which_segment_end_y:
+                        clipping_y = segment_y[clipping_start_y % self._segment_cols : clipping_end_y % self._segment_cols , :]
+                    elif indx_y == which_segment_start_y:
+                        clipping_y = segment_y[clipping_start_y % self._segment_cols : , :]
+                    elif indx_y == which_segment_end_y:
+                        clipping_y = np.vstack((clipping_y, segment_y[ : clipping_end_y % self._segment_cols , :]))
                     else:
                         clipping_y = np.vstack((clipping_y, segment_y))
 
                 # Merge clipping_y into clipping_x horizontally.
-                if indx_x == which_segment_start_x:
-                    clipping_x = clipping_y
+                if indx_x == which_segment_start_x and indx_y == which_segment_end_x:
+                    clipping_x = clipping_y[clipping_start_x % self._segment_rows : clipping_end_x % self._segment_rows , :]
+                elif indx_x == which_segment_start_x:
+                    clipping_x = clipping_y[clipping_start_x % self._segment_rows : , :]
+                elif indx_x == which_segment_end_x:
+                    clipping_x = np.hstack((clipping_x, clipping_y[ : clipping_end_x % self._segment_rows , :]))
                 else:
                     clipping_x = np.hstack((clipping_x, clipping_y))
 
