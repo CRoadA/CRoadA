@@ -7,7 +7,7 @@ import tensorflow as tf
 
 Sequence = tf.keras.utils.Sequence
 
-from CRoadA.grid_manager import GridManager
+from CRoadA.grid_manager import GridManager, GridType
 
 InputGrid = np.ndarray[(Any, Any, 3), np.float64]
 """Like normal Grid, but with bools indicating, if it should be changed (the 0-th coordinate of the thrid dimension). If it is False, then the IS_STREET bool is treated as zero."""
@@ -74,7 +74,7 @@ class BatchSequence(Sequence):
     def cut_from_grid_segments(
         grid_manager: GridManager, cut_start_x: int, cut_start_y: int, cut_size: tuple[int, int], surplus: int = 0
     ) -> np.ndarray:
-        """Create a cut grid from given grid manager by reading segments.
+        """Create a cut grid from given grid manager by reading segments. No need to worry about cut_size exceeding boundaries - it is handled inside.
 
         Parameters
         ----------
@@ -93,6 +93,9 @@ class BatchSequence(Sequence):
         np.ndarray
             Cut grid as a numpy array.
         """
+        # Adjust surplus if it exceeds boundaries # TODO - can be adjusted - different surplus for different sides?
+        surplus = max(min(surplus, cut_start_x, cut_start_y, cut_size[0], cut_size[1]), 0)
+
         # Load metadata
         metadata = grid_manager.get_metadata()
 
@@ -101,14 +104,15 @@ class BatchSequence(Sequence):
         cut_start_y = cut_start_y * (cut_size[1] - surplus) - (surplus / 2)
 
         # Calculate end point
-        cut_end_x = cut_start_x + cut_size[0]
-        cut_end_y = cut_start_y + cut_size[1]
+        cut_end_x = min(cut_start_x + cut_size[0], metadata.columns_number)
+        cut_end_y = min(cut_start_y + cut_size[1], metadata.rows_number)
+
         # Determine which segments to read
-        segment_h, segment_w = metadata.segment_h, metadata.segment_w
-        which_segment_start_x = cut_start_x // segment_h
-        which_segment_start_y = cut_start_y // segment_w
-        which_segment_end_x = cut_end_x // segment_h
-        which_segment_end_y = cut_end_y // segment_w
+        segment_w, segment_h = metadata.segment_w, metadata.segment_h
+        which_segment_start_x = cut_start_x // segment_w
+        which_segment_start_y = cut_start_y // segment_h
+        which_segment_end_x = cut_end_x // segment_w
+        which_segment_end_y = cut_end_y // segment_h
 
         cut_x = np.array([])  # Grid()
         # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
@@ -118,25 +122,84 @@ class BatchSequence(Sequence):
                 segment_y = grid_manager.read_segment(indx_x, indx_y)
                 # Merge segment_y into cut_y vertically.
                 if indx_y == which_segment_start_y and indx_y == which_segment_end_y:
-                    cut_y = segment_y[cut_start_y % segment_w : cut_end_y % segment_w, :]
+                    cut_y = segment_y[cut_start_y % segment_h : cut_end_y % segment_h, :]
                 elif indx_y == which_segment_start_y:
-                    cut_y = segment_y[cut_start_y % segment_w :, :]
+                    cut_y = segment_y[cut_start_y % segment_h :, :]
                 elif indx_y == which_segment_end_y:
-                    cut_y = np.vstack((cut_y, segment_y[: cut_end_y % segment_w, :]))
+                    cut_y = np.vstack((cut_y, segment_y[: cut_end_y % segment_h, :]))
                 else:
                     cut_y = np.vstack((cut_y, segment_y))
 
             # Merge cut_y into cut_x horizontally.
             if indx_x == which_segment_start_x and indx_x == which_segment_end_x:
-                cut_x = cut_y[cut_start_x % segment_h : cut_end_x % segment_h, :]
+                cut_x = cut_y[cut_start_x % segment_w : cut_end_x % segment_w, :]
             elif indx_x == which_segment_start_x:
-                cut_x = cut_y[cut_start_x % segment_h :, :]
+                cut_x = cut_y[cut_start_x % segment_w :, :]
             elif indx_x == which_segment_end_x:
-                cut_x = np.hstack((cut_x, cut_y[: cut_end_x % segment_h, :]))
+                cut_x = np.hstack((cut_x, cut_y[: cut_end_x % segment_w, :]))
             else:
                 cut_x = np.hstack((cut_x, cut_y))
 
         return cut_x
+
+    @staticmethod
+    def write_cut_to_grid_segments(
+        cut: np.ndarray,
+        cut_size: tuple[int, int],
+        segment_w: int,
+        segment_h: int,
+        cut_start_x: int,
+        cut_start_y: int,
+        from_file_path: str,
+        to_directory: str,
+        grid_type: GridType,
+    ) -> GridManager:
+        """
+        Write the cut grid into a new GridManager by segments.
+        
+        :param cut: The cut grid to write.
+        :type cut: np.ndarray
+        :param cut_size: Size of the cut (rows, columns).
+        :type cut_size: tuple[int, int]
+        :param segment_w: Segment width.
+        :type segment_w: int
+        :param segment_h: Segment height.
+        :type segment_h: int
+        :param cut_start_x: Starting x-coordinate of the cut.
+        :type cut_start_x: int
+        :param cut_start_y: Starting y-coordinate of the cut.
+        :type cut_start_y: int
+        :param from_file_path: File path where the cut grid comes from.
+        :type from_file_path: str
+        :param grid_type: Type of the grid.
+        :type grid_type: GridType
+        :return: A new GridManager instance containing the cut grid.
+        :rtype: GridManager
+        """
+        cut_segment_rows = math.ceil(cut_size[0] / segment_h)  # number of segments in cut vertically
+        cut_segment_columns = math.ceil(cut_size[1] / segment_w)  # number of segments in cut horizontally
+        cut_grid = GridManager[grid_type](
+            f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat",
+            cut_size[0],
+            cut_size[1],
+            0,
+            0,
+            None,
+            segment_h,
+            segment_w,
+            to_directory,
+        )
+        for segment_row in range(cut_segment_rows):
+            for segment_col in range(cut_segment_columns):
+                cut_grid.write_segment(
+                    cut[
+                        segment_row * segment_h : min((segment_row + 1) * segment_h, cut_size[0]),
+                        segment_col * segment_w : min((segment_col + 1) * segment_w, cut_size[1]),
+                    ],
+                    segment_row,
+                    segment_col,
+                )
+        return cut_grid
 
 
 @dataclass
@@ -194,39 +257,18 @@ class CutSequence(Sequence):
         cut = cut.resize(
             1, (cut_size[0], cut_size[1], cut.shape[2] + 1)
         )  # is modifiable # TODO - check IS_PREDICTED case
-        cut_segment_rows = math.ceil(
-            cut_size[0] / self._grid_metadata.segment_h
-        )  # number of segments in cut vertically
-        cut_segment_columns = math.ceil(
-            cut_size[1] / self._grid_metadata.segment_w
-        )  # number of segments in cut horizontally
-        cut_grid = GridManager[InputGrid](
-            f"{self._file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat",
-            cut_size[0],
-            cut_size[1],
-            0,
-            0,
-            None,
-            self._grid_metadata.segment_h,
+
+        cut_grid = BatchSequence.write_cut_to_grid_segments(
+            cut,
+            cut_size,
             self._grid_metadata.segment_w,
+            self._grid_metadata.segment_h,
+            cut_start_x,
+            cut_start_y,
+            self._file_path,
             "./tmp/batches/batch_sequences/cuts/",
+            InputGrid
         )
-        for segment_row in range(cut_segment_rows):
-            for segment_col in range(cut_segment_columns):
-                cut_grid.write_segment(
-                    cut[
-                        segment_row
-                        * self._grid_metadata.segment_h : min(
-                            (segment_row + 1) * self._grid_metadata.segment_h, cut_size[0]
-                        ),
-                        segment_col
-                        * self._grid_metadata.segment_w : min(
-                            (segment_col + 1) * self._grid_metadata.segment_w, cut_size[1]
-                        ),
-                    ],
-                    segment_row,
-                    segment_col,
-                )
 
         return ((cut_start_x, cut_start_y), cut_grid)
 
