@@ -58,22 +58,14 @@ def discover_streets(grid_part: Grid) -> tuple[list[CrossroadDiscovery], list[Cr
     conflicting_streets_image = skim.reconstruction(seed, separated_streets_image)
     conflictless_streets_image = np.logical_and(separated_streets_image, np.logical_not(conflicting_streets_image))
 
-    # print(f"conflicting_streets_image:")
-    # plt.imshow(conflicting_streets_image)
-
     conflicting_streets_by_points, conflicting_streets = _create_street_dicoveries(conflicting_streets_image)
     conflictless_streets_by_points, conflictless_streets = _create_street_dicoveries(conflictless_streets_image)
-
-    street = conflicting_streets[0]
-
-    street_image = np.zeros(separated_streets_image.shape)
-    for point in street.linestring:
-        street_image[point] = 1
 
     street_starts, street_ends = _assign_streets_to_crossroads(
         conflicting_crossroads + conflictless_crossroads,
         conflicting_streets_by_points | conflictless_streets_by_points
     )
+
 
     _supply_street_ends_topologically(
         separated_streets_image,
@@ -82,10 +74,6 @@ def discover_streets(grid_part: Grid) -> tuple[list[CrossroadDiscovery], list[Cr
         street_ends
         )
 
-    # accounted = 0
-    # for crossroad in conflicting_streets + conflictless_streets:
-    #     if crossroad in street_starts and crossroad in street_ends:
-    #         accounted += 1
     
     _order_street_linestrings(
         separated_streets_image,
@@ -93,9 +81,6 @@ def discover_streets(grid_part: Grid) -> tuple[list[CrossroadDiscovery], list[Cr
         street_starts,
         street_ends
     )
-
-    # print(f"separated_streets_image:")
-    # plt.imshow(separated_streets_image)
 
     return (
         conflictless_crossroads,
@@ -184,7 +169,7 @@ def _find_street_topological_ends(separated_streets_image: np.ndarray[(Any, Any)
             (min(h - 1, y+1), min(w - 1, x+1)),
         ]
         for n_y, n_x in checked_coords:
-            if separated_streets_image[y, x]:
+            if separated_streets_image[n_y, n_x]:
                 queue.append((point, (n_y, n_x)))
 
 
@@ -242,6 +227,7 @@ def _order_street_linestrings(separated_streets_image: np.ndarray[(Any, Any), np
         y, x = point
 
         w, h = separated_streets_image.shape
+        queued = []
 
         checked_coords = [
             (max(0, y-1), max(0, x-1)),
@@ -257,17 +243,13 @@ def _order_street_linestrings(separated_streets_image: np.ndarray[(Any, Any), np
         for n_y, n_x in checked_coords:
             if separated_streets_image[n_y, n_x] and (n_y, n_x) in street.linestring:
                 queue.append((n_y, n_x))
-    
-    # Debug
-    counter = 0
+                queued.append((n_y, n_x))
+        return queued
 
     for street in streets:
         new_linestring = []
         start = street_starts[street]
         end = street_ends[street]
-
-        if counter == 0:
-            print(f"DEBUG: street.linestring: {street.linestring}")
 
         queue: list[GridPoint] = [start]
         visited: list[GridPoint] = []
@@ -283,9 +265,7 @@ def _order_street_linestrings(separated_streets_image: np.ndarray[(Any, Any), np
             _queue_neighbors_if_necessary(point, street, separated_streets_image, queue)
 
         new_linestring.append(end)
-        street.linestring = new_linestring
-        counter += 1
-                    
+        street.linestring = new_linestring                    
 
 def _find_crossroads(skeleton: np.ndarray[(Any, Any), np.bool]):
     RING_LENGTH = 8
