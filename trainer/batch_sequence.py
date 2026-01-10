@@ -24,7 +24,7 @@ class BatchSequence(Sequence):
     def __init__(self, files: list[str], batch_size: int, cut_sizes: list[tuple[int, int]]):
         """
         Create a batch sequence from given files.
-        
+
         :param files: Files to prepare batches from.
         :type files: list[str]
         :param batch_size: Number of items in each batch - each item corresponds to one file.
@@ -70,6 +70,74 @@ class BatchSequence(Sequence):
         """Get the list of cut sizes."""
         return self._cut_sizes
 
+    @staticmethod
+    def cut_from_grid_segments(
+        grid_manager: GridManager, cut_start_x: int, cut_start_y: int, cut_size: tuple[int, int], surplus: int = 0
+    ) -> np.ndarray:
+        """Create a cut grid from given grid manager by reading segments.
+
+        Parameters
+        ----------
+        grid_manager : GridManager
+            Grid manager to read segments from.
+        cut_start_x : int
+            Starting x coordinate of the cut.
+        cut_start_y : int
+            Starting y coordinate of the cut.
+        cut_size : tuple[int, int]
+            Size of the cut (rows, columns).
+        surplus : int, optional
+            Surplus size to consider around the cut, by default 0
+        Returns
+        -------
+        np.ndarray
+            Cut grid as a numpy array.
+        """
+        # Load metadata
+        metadata = grid_manager.get_metadata()
+
+        # Calculate start point with surplus
+        cut_start_x = cut_start_x * (cut_size[0] - surplus) - (surplus / 2)
+        cut_start_y = cut_start_y * (cut_size[1] - surplus) - (surplus / 2)
+
+        # Calculate end point
+        cut_end_x = cut_start_x + cut_size[0]
+        cut_end_y = cut_start_y + cut_size[1]
+        # Determine which segments to read
+        segment_h, segment_w = metadata.segment_h, metadata.segment_w
+        which_segment_start_x = cut_start_x // segment_h
+        which_segment_start_y = cut_start_y // segment_w
+        which_segment_end_x = cut_end_x // segment_h
+        which_segment_end_y = cut_end_y // segment_w
+
+        cut_x = np.array([])  # Grid()
+        # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
+        for indx_x in range(which_segment_start_x, which_segment_end_x + 1):
+            for indx_y in range(which_segment_start_y, which_segment_end_y + 1):
+                # TODO - memory issue -> adjust the maximal segment size or something
+                segment_y = grid_manager.read_segment(indx_x, indx_y)
+                # Merge segment_y into cut_y vertically.
+                if indx_y == which_segment_start_y and indx_y == which_segment_end_y:
+                    cut_y = segment_y[cut_start_y % segment_w : cut_end_y % segment_w, :]
+                elif indx_y == which_segment_start_y:
+                    cut_y = segment_y[cut_start_y % segment_w :, :]
+                elif indx_y == which_segment_end_y:
+                    cut_y = np.vstack((cut_y, segment_y[: cut_end_y % segment_w, :]))
+                else:
+                    cut_y = np.vstack((cut_y, segment_y))
+
+            # Merge cut_y into cut_x horizontally.
+            if indx_x == which_segment_start_x and indx_x == which_segment_end_x:
+                cut_x = cut_y[cut_start_x % segment_h : cut_end_x % segment_h, :]
+            elif indx_x == which_segment_start_x:
+                cut_x = cut_y[cut_start_x % segment_h :, :]
+            elif indx_x == which_segment_end_x:
+                cut_x = np.hstack((cut_x, cut_y[: cut_end_x % segment_h, :]))
+            else:
+                cut_x = np.hstack((cut_x, cut_y))
+
+        return cut_x
+
 
 @dataclass
 class CutSequence(Sequence):
@@ -78,7 +146,7 @@ class CutSequence(Sequence):
     def __init__(self, file, cut_sizes: list[tuple[int, int]], sequence: BatchSequence):
         """
         Initialize cut sequence from a file - cuts will be parts of the file with sizes from cut_sizes.
-        
+
         :param file: File path to create cuts from.
         :param cut_sizes: List of possible cut sizes (rows, columns) to use when generating cuts from the file.
         :type cut_sizes: list[tuple[int, int]]
@@ -120,43 +188,12 @@ class CutSequence(Sequence):
 
         self._already_used.append(((cut_start_x, cut_start_y), cut_size))
 
-        # Calculate end point
-        cut_end_x = cut_start_x + cut_size[0]
-        cut_end_y = cut_start_y + cut_size[1]
+        # Create cut grid
+        cut = BatchSequence.cut_from_grid_segments(self._grid_manager, cut_start_x, cut_start_y, cut_size, surplus=0)
 
-        # Determine which segments to read
-        which_segment_start_x = cut_start_x // self._segment_rows
-        which_segment_start_y = cut_start_y // self._segment_cols
-        which_segment_end_x = cut_end_x // self._segment_rows
-        which_segment_end_y = cut_end_y // self._segment_cols
-
-        cut_x = np.array([])  # Grid()
-        # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
-        for indx_x in range(which_segment_start_x, which_segment_end_x + 1):
-            for indx_y in range(which_segment_start_y, which_segment_end_y + 1):
-                # TODO - memory issue -> adjust the maximal segment size or something
-                segment_y = self._grid_manager.read_segment(indx_x, indx_y)
-                # Merge segment_y into cut_y vertically.
-                if indx_x == which_segment_start_y and indx_y == which_segment_end_y:
-                    cut_y = segment_y[cut_start_y % self._segment_cols : cut_end_y % self._segment_cols , :]
-                elif indx_y == which_segment_start_y:
-                    cut_y = segment_y[cut_start_y % self._segment_cols : , :]
-                elif indx_y == which_segment_end_y:
-                    cut_y = np.vstack((cut_y, segment_y[ : cut_end_y % self._segment_cols , :]))
-                else:
-                    cut_y = np.vstack((cut_y, segment_y))
-
-            # Merge cut_y into cut_x horizontally.
-            if indx_x == which_segment_start_x and indx_y == which_segment_end_x:
-                cut_x = cut_y[cut_start_x % self._segment_rows : cut_end_x % self._segment_rows , :]
-            elif indx_x == which_segment_start_x:
-                cut_x = cut_y[cut_start_x % self._segment_rows : , :]
-            elif indx_x == which_segment_end_x:
-                cut_x = np.hstack((cut_x, cut_y[ : cut_end_x % self._segment_rows , :]))
-            else:
-                cut_x = np.hstack((cut_x, cut_y))
-
-        cut_x = cut_x.resize(1, (cut_size[0], cut_size[1], cut_x.shape[2] + 1))  # is modifiable # TODO - check IS_PREDICTED case
+        cut = cut.resize(
+            1, (cut_size[0], cut_size[1], cut.shape[2] + 1)
+        )  # is modifiable # TODO - check IS_PREDICTED case
         cut_segment_rows = math.ceil(
             cut_size[0] / self._grid_metadata.segment_h
         )  # number of segments in cut vertically
@@ -177,7 +214,7 @@ class CutSequence(Sequence):
         for segment_row in range(cut_segment_rows):
             for segment_col in range(cut_segment_columns):
                 cut_grid.write_segment(
-                    cut_x[
+                    cut[
                         segment_row
                         * self._grid_metadata.segment_h : min(
                             (segment_row + 1) * self._grid_metadata.segment_h, cut_size[0]
