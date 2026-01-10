@@ -437,18 +437,34 @@ class StreetBorder:
 #     conflict_points: list[GridPoint]
 #     linestring_points: list[MeshPoint]
 
+
 @dataclass
 class StreetDiscovery:
     """Discovered data about street during the street discovery process.
     Attributes:
-        linestring (list[MeshPoint]): Graph representation of street (part of Mesh). May be empty.
-        borders (list[StreetBorder]): Discovered borders of Street.
+        linestring (list[GridPoint]): Graph representation of street (part of Mesh). May be empty.
         conflicts (list[GridPoint]): Conflicts with Crossroads or grid part border.
     """
-    linestring: list[MeshPoint]
-    borders: list[StreetBorder]
-    conflicts: list[GridPoint]
+    _last_street_id = 0
 
+    linestring: list[GridPoint]
+    conflicts: list[GridPoint]
+    id: int
+
+    def __init__(self):
+        self.linestring = []
+        self.conflicts = []
+        StreetDiscovery._last_street_id += 1
+        self.id = StreetDiscovery._last_street_id
+
+    # def __hash__(self):
+    #     result = 0
+    #     BASE = 17179869143
+    #     for x, y in self.linestring:
+    #         result = ((result * BASE) + x) * BASE + y
+    #     return result
+    def __hash__(self):
+        return self.id
 
 
 @dataclass
@@ -457,8 +473,28 @@ class CrossroadDiscovery:
     Attributes:
         points (list[GridPoint]): Points in the interior of the crossroad.
         conflicting_points (list[GridPoint]): Conflicting points of the interior of the crossroad.
-        street_junctions (list[tuple[StreetDiscovery, MeshPoint]]): List of adjacentStreetDiscoveries with their junction points (parts of Mesh) binding the StreetDiscovery to the crossroad.
+        street_junctions (dict[StreetDiscovery, GridPoint]): List of adjacent StreetDiscoveries with their junction points binding the StreetDiscovery to the crossroad.
     """
+    _last_crossroad_id = 0
+
     points: list[GridPoint]
     conflicting_points: list[GridPoint]
-    street_junctions: list[tuple[StreetDiscovery, MeshPoint]]
+    street_junctions: dict[StreetDiscovery, GridPoint]
+    id: int
+
+    def __init__(self):
+        self.points = []
+        self.conflicting_points = []
+        self.street_junctions = dict()
+        CrossroadDiscovery._last_crossroad_id += 1
+        self.id = CrossroadDiscovery._last_crossroad_id
+
+    # def __hash__(self):
+    #     result = 0
+    #     BASE = 17179869143
+    #     for x, y in self.points:
+    #         result = ((result * BASE) + x) * BASE + y
+    #     return result
+
+    def __hash__(self):
+        return self.id

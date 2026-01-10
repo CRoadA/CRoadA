@@ -9,7 +9,7 @@ import sys
 import copy
 
 
-class GRID_INDICES(Enum):
+class GRID_INDICES:
     IS_STREET = 0
     ALTITUDE = 1
 
