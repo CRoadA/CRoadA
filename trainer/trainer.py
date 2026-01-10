@@ -27,7 +27,7 @@ class Trainer:
                 cut_size=[(256, 256)],
             ),
             clipping_size=256,
-            input_grid_surplus=32,
+            input_grid_surplus=self._model.get_input_grid_surplus(),
         )
         # TODO: Write proper references to proper training logic elements
         self._model.fit(batchSeq, epochs=fits_count)
