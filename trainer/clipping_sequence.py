@@ -36,7 +36,7 @@ class ClippingBatchSequence(Sequence):
             ) * self._base_sequence.batch_size()
         return result
 
-    def __getitem__(self, index: int) -> tuple[InputGrid, OutputGrid]:
+    def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
 
         result = 0
         found = False

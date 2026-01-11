@@ -37,27 +37,27 @@ class BatchSequence(Sequence):
         self._batch_size = batch_size
         # Temporarily: one batch item -> cut size from the given list
         # OTHER POSSIBILITY: one batch -> one cut size
-        self._iterators = [
+        self._cut_sequences_per_file = [
             CutSequence(file=self._files[i_file], cut_sizes=cut_sizes, sequence=self) for i_file in range(batch_size)
-        ]  # pre-create iterators
+        ]  # pre-create cut sequences for each file in the batch
         # I was thinking about making each iterator correspond to a specific part (segments) of each file
-        # OR about reading firstly -> random parts of one file
+        # OR about reading firstly -> random parts of one file -> CutSequence must be quite deterministic because of the fact that Keras Sequence (like ClippingBatchSequence) relies on indexing to get the next batch - not remembering state
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Get number of batches per epoch."""
-        return len(self._iterators[0])
+        return len(self._cut_sequences_per_file[0])
 
-    def __getitem__(self, index: int) -> list[list[tuple[tuple[int, int], GridManager]]]:
+    def __getitem__(self, index: int) -> list[tuple[tuple[int, int], GridManager]]:
         """Generate one batch of data == multiple files turned to cuts (a list of batch items, each being a list of cuts).
         Returns: batch - list of batch items (item == file), each being a list of cuts (start point and cut grid)."""
         batch = []
         # iter_len = len(self._iterators[index])
-        iter_len = len(self._iterators[0])
+        iter_len = len(self._cut_sequences_per_file[0])
         for i in range(self._batch_size):
             # # index and i can be replaced by each other
             # batch.append(self._iterators[index].__getitem__(i % iter_len))
             batch.append(
-                self._iterators[i].__getitem__(index % iter_len)
+                self._cut_sequences_per_file[i].__getitem__(index % iter_len)
             )  # each iterator corresponds to one batch item
 
         return batch
@@ -68,7 +68,7 @@ class BatchSequence(Sequence):
 
     def cut_sizes(self) -> list[tuple[int, int]]:
         """Get the list of cut sizes."""
-        return self._cut_sizes
+        return self._cut_sizes.copy()
 
     @staticmethod
     def cut_from_grid_segments(
@@ -229,7 +229,7 @@ class CutSequence(Sequence):
         self._max_y = self._grid_cols - min(cut[1] for cut in self._cut_sizes)  # max starting y for cut
         self._already_used = list()  # list of already used starting points for cuts with their sizes
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Get number of iterations possible"""
         return (
             self._max_x * self._max_y

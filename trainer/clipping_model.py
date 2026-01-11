@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import tensorflow as tf
 
 Sequence = tf.keras.utils.Sequence
@@ -98,7 +99,7 @@ class PredictClippingSequence(Sequence):
         self._grid_rows, self._grid_cols = self._grid_metadata.rows_number, self._grid_metadata.columns_number
         self._segment_rows, self._segment_cols = self._grid_metadata.segment_h, self._grid_metadata.segment_w
 
-    def __len__(self):
+    def __len__(self) -> int:
         rows_number, cols_number = (
             self._grid_rows - self._input_surplus,
             self._grid_cols - self._input_surplus,
@@ -107,17 +108,23 @@ class PredictClippingSequence(Sequence):
             cols_number / (self._clipping_size - self._input_surplus)
         )
 
-    def __getitem__(self, index: int) -> GridManager[OutputGrid]:
+    def __getitem__(self, index: int) -> np.ndarray:
         """
         Get one clipped prediction from the sequence.
         
         :param index: Index of the clipping to retrieve.
         :type index: int
         :return: Clipped prediction grid.
-        :rtype: GridManager[OutputGrid]
+        :rtype: np.ndarray
         """
-        cut_start_x = index * (self._clipping_size - self._input_surplus)
-        cut_start_y = index * (self._clipping_size - self._input_surplus)
+        # Calculate clipping start positions - cover the whole grid, moving by clipping size minus surplus - not to overlap and simultaneously cover all areas
+        step = self._clipping_size - self._input_surplus
+        n_cols = math.ceil((self._grid_cols - self._input_surplus) / step)
+        row = index // n_cols
+        col = index % n_cols
+        cut_start_x = col * step
+        cut_start_y = row * step
+
         batch_item = BatchSequence.cut_from_grid_segments(
             self._grid_manager,
             cut_start_x,
