@@ -8,6 +8,7 @@ import math
 import sys
 import copy
 import shutil
+import time
 
 
 class GRID_INDICES:
@@ -317,7 +318,9 @@ class GridManager(Generic[GridType]):
     
     def deep_copy(self) -> GridFileMetadata:
         path, extension = os.path.splitext(self._file_name)
-        copied_file_name = path + "_copy" + extension
+
+        epoch_time = int(time.time())
+        copied_file_name = path + "_copy_" + epoch_time + extension
 
         shutil.copyfile(os.path.join(self._data_dir, self._file_name), os.path.join(self._data_dir, copied_file_name))
 
