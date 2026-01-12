@@ -7,7 +7,7 @@ import tensorflow as tf
 
 Sequence = tf.keras.utils.Sequence
 
-from CRoadA.grid_manager import GridManager, GridType
+from grid_manager import GridManager, GridType
 
 InputGrid = np.ndarray[(Any, Any, 3), np.float64]
 """Like normal Grid, but with bools indicating, if it should be changed (the 0-th coordinate of the thrid dimension). If it is False, then the IS_STREET bool is treated as zero."""
@@ -93,7 +93,7 @@ class BatchSequence(Sequence):
         np.ndarray
             Cut grid as a numpy array.
         """
-        # Adjust surplus if it exceeds boundaries # TODO - can be adjusted - different surplus for different sides?
+        # Adjust surplus if it exceeds boundaries # TODO - Add padding if needed instead of reducing surplus
         surplus = max(min(surplus, cut_start_x, cut_start_y, cut_size[0], cut_size[1]), 0)
 
         # Load metadata
@@ -109,10 +109,12 @@ class BatchSequence(Sequence):
 
         # Determine which segments to read
         segment_w, segment_h = metadata.segment_w, metadata.segment_h
-        which_segment_start_x = cut_start_x // segment_w
-        which_segment_start_y = cut_start_y // segment_h
-        which_segment_end_x = cut_end_x // segment_w
-        which_segment_end_y = cut_end_y // segment_h
+        
+        which_segment_start_x = int(cut_start_x // segment_w)
+        which_segment_start_y = int(cut_start_y // segment_h)
+        which_segment_end_x = int(cut_end_x // segment_w)
+        which_segment_end_y = int(cut_end_y // segment_h)
+
 
         cut_x = np.array([])  # Grid()
         # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
@@ -217,7 +219,7 @@ class CutSequence(Sequence):
         :type sequence: BatchSequence
         """
         self._file_path = file
-        sequence._files[self._file_path] += 1  # increment count of uses
+        #sequence._files[sequence._files.index(self._file_path)] += 1  # increment count of uses # TODO
         self._cut_sizes = cut_sizes
 
         self._grid_manager = GridManager(self._file_path)  # load grid manager

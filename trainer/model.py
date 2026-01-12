@@ -1,11 +1,11 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from enum import Enum
 import tensorflow as tf
 
 Sequence = tf.keras.utils.Sequence
 
-from CRoadA.grid_manager import GRID_INDICES, GridManager
-import CRoadA.trainer.batch_sequence as batch_sequence
+from grid_manager import GRID_INDICES, GridManager
+import trainer.batch_sequence as batch_sequence
 
 
 class TRAINING_GRID_INDICES(Enum):
@@ -15,6 +15,12 @@ class TRAINING_GRID_INDICES(Enum):
 
 
 class Model(ABC):
+    def __init__(self, dir: str | None = None):
+        if dir is not None:
+            self._dir = dir
+        else:
+            self._dir = "./models/created_at_" + str(tf.timestamp())
+        
 
     def predict(self, input: GridManager[batch_sequence.InputGrid]) -> GridManager[batch_sequence.OutputGrid]:
         """Predicts grid for given input.
@@ -36,13 +42,14 @@ class Model(ABC):
 
         Parameters
         ----------
-        input : TrainingGrid
-            Input grid. See TrainingGrid type description.
+        input : batch_sequence.BatchSequence
+            Input batch sequence. See BatchSequence type description.
         #output : Grid
             Expected output. Its size is equal the input size (except for the IS_PREDICTED dimension).
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def get_input_grid_surplus(self) -> int:
         """Get the surplus size of input grid compared to output grid.
 
@@ -102,3 +109,14 @@ class Model(ABC):
                     result[row, col, GRID_INDICES.ALTITUDE] = input[row, col, TRAINING_GRID_INDICES.ALTITUDE]
 
         return result
+    
+    @abstractmethod
+    def save(self):
+        """Saves the model to the specified path.
+
+        Parameters
+        ----------
+        path : str
+            Path to save the model.
+        """
+        raise NotImplementedError()

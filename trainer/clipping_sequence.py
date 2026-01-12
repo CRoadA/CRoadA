@@ -1,5 +1,5 @@
-from CRoadA.trainer.batch_sequence import *
-from CRoadA.trainer.model import Model  # for clean_input()
+from trainer.batch_sequence import *
+from trainer.model import Model  # for clean_input()
 
 
 class ClippingBatchSequence(Sequence):

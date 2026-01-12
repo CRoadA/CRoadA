@@ -1,24 +1,38 @@
 import math
 import numpy as np
 import tensorflow as tf
+import os.path
 
 Sequence = tf.keras.utils.Sequence
 
-from CRoadA.trainer.model import Model
-from CRoadA.trainer.clipping_sequence import BatchSequence, ClippingBatchSequence, InputGrid, OutputGrid
-from CRoadA.grid_manager import GridManager
+from trainer.model import Model
+from trainer.clipping_sequence import BatchSequence, ClippingBatchSequence, InputGrid, OutputGrid
+from grid_manager import GridManager
 
 
 class ClippingModel(Model):
-    def __init__(self):
+    def __init__(self, path: str | None = None):
         super().__init__()
-        self.model = tf.keras.models.Sequential()
-        # Model architecture here - #TODO: Define the actual architecture
-        self.model.add(tf.keras.layers.InputLayer(input_shape=(None, None, 3)))
-        self.model.add(tf.keras.layers.Conv2D(32, 3, activation="relu", padding="same"))
-        self.model.add(tf.keras.layers.Conv2D(16, 3, activation="relu", padding="same"))
-        self.model.add(tf.keras.layers.Conv2D(filters=2, kernel_size=1, activation="sigmoid", padding="same"))
-        self.model.compile(optimizer="adam", loss="mse")
+        if not os.path.isfile(path):
+            self._keras_model = tf.keras.models.Sequential()
+            # Model architecture here - #TODO: Define the actual architecture
+            self._keras_model.add(tf.keras.layers.InputLayer(input_shape=(None, None, 3)))
+            self._keras_model.add(tf.keras.layers.Conv2D(32, 3, activation="relu", padding="same"))
+            self._keras_model.add(tf.keras.layers.Conv2D(16, 3, activation="relu", padding="same"))
+            self._keras_model.add(tf.keras.layers.Conv2D(filters=2, kernel_size=1, activation="sigmoid", padding="same"))
+            self._keras_model.compile(
+                optimizer="adam",
+                loss=None,
+                loss_weights=None,
+                metrics=None,
+                weighted_metrics=None,
+                run_eagerly=False,
+                steps_per_execution=1,
+                jit_compile="auto",
+                auto_scale_loss=True,
+            )
+        else:
+            self._keras_model = tf.keras.models.load_model(path)
 
     def fit(self, input: ClippingBatchSequence, epochs: int = 1):
         """Fit model to the given data.
@@ -29,7 +43,7 @@ class ClippingModel(Model):
             Input batch sequence with clipped grids.
         """
         # TODO: Implement proper training logic
-        self.model.fit(input, epochs=epochs)
+        self._keras_model.fit(input, epochs=epochs)
 
     def predict(self, input: GridManager[InputGrid]) -> list[GridManager[OutputGrid]]:
         """Predicts grid for given input.
@@ -56,7 +70,7 @@ class ClippingModel(Model):
             # TODO - Combine predictions into a full grid manager?
             prediction_grid = BatchSequence.write_cut_to_grid_segments(
                 prediction, 256, 256, 256, i * 256, i * 256, input._file_name, "./tmp/predictions/"
-            )
+            )  # TODO - check if the name is sufficient
             output_grids.append(prediction_grid)
 
         return output_grids  # This should be combined into a single GridManager
@@ -122,7 +136,9 @@ class PredictClippingSequence(Sequence):
         n_cols = math.ceil((self._grid_cols - self._input_surplus) / step)
         row = index // n_cols
         col = index % n_cols
-        cut_start_x = col * step
+        cut_start_x = (
+            col * step
+        )  # TODO - what when the surplus makes us go out of bounds - should we complete the grid with zeros?
         cut_start_y = row * step
 
         batch_item = BatchSequence.cut_from_grid_segments(
@@ -133,6 +149,16 @@ class PredictClippingSequence(Sequence):
             surplus=self._input_surplus,
         )
         batch_item = Model.clean_input(batch_item)
-        prediction = self._model.model.predict(tf.expand_dims(batch_item, axis=0))
+        prediction = self._model._keras_model.predict(tf.expand_dims(batch_item, axis=0))
 
         return prediction[0]
+
+    def save(self):
+        """Saves the model to the specified path.
+
+        Parameters
+        ----------
+        path : str
+            Path to save the model.
+        """
+        self.model.save(self._dir + "/" + str(tf.timestamp()) + "_model.keras")
