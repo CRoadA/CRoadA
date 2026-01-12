@@ -115,7 +115,7 @@ class GridManager(Generic[GridType]):
             metadata (GridFileMetadata): Metadata of the file.
         """
         DESIRED_METADATA_NUMBER = 9
-        with open(os.path.join(self._data_dir, self._file_name), "r", encoding="utf-8") as file:
+        with open(os.path.join(self._data_dir, self._file_name), "r", encoding="latin1") as file:
             first_line = file.readline()[:-1]  # without \n
             metadata_bytes = file.tell()
             splitted = first_line.split(METADATA_SEPARATOR)
@@ -177,7 +177,7 @@ class GridManager(Generic[GridType]):
         metadata_bytes = 0
         CELL_SIZE = 8  # ZMIANA: 8 bajtów (2 kanały * 4 bajty float32)
 
-        with open(os.path.join(self._data_dir, self._file_name), "w", encoding="utf-8") as file:
+        with open(os.path.join(self._data_dir, self._file_name), "w", encoding="latin1") as file:
             file.write(METADATA_SEPARATOR.join(map(str, [
                 1,  # version
                 rows_number,
