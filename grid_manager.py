@@ -7,6 +7,7 @@ from enum import Enum
 import math
 import sys
 import copy
+import shutil
 
 
 class GRID_INDICES:
@@ -33,6 +34,7 @@ class GridFileMetadata():
         segment_h (int): Height of segment (in grid rows).
         segment_w (int): Width of segment (in grid columns).
         byteorder ("little"|"big"): Big-endian or little-endian.
+        third_dimension_size (int): Size of the third dimension of the array.
         metadata_bytes (int): Length of the metadata line (in bytes)."""
     version: int
     rows_number: int
@@ -43,10 +45,13 @@ class GridFileMetadata():
     segment_h: int
     segment_w: int
     byteorder: Literal["little", "big"]
+    third_dimension_size: int
     metadata_bytes: int
 
 
 GridType = TypeVar('GridType', bound=np.ndarray)
+
+SINGLE_CELL_SIZE = 4
 
 
 class GridManager(Generic[GridType]):
@@ -57,7 +62,7 @@ class GridManager(Generic[GridType]):
 
     def __init__(self, file_name: str, rows_number: int | None = None, columns_number: int | None = None,
                  upper_left_longitude: float | None = None, upper_left_latitude: float | None = None,
-                 grid_density: float | None = 1, segment_h: int = 5000, segment_w: int = 5000, data_dir: str = "grids"):
+                 grid_density: float | None = 1, segment_h: int = 5000, segment_w: int = 5000, data_dir: str = "grids", third_dimension_size: int = 3):
         """Create GridManager, which manages reading and writing to a specific grid file.
         Args:
             file_name (str): File name.
@@ -70,6 +75,7 @@ class GridManager(Generic[GridType]):
             grid_density (float): Distance between two distinct closest points in grid (in meters).
             segment_h (int): Height of segment (in grid rows).
             segment_w (int): Width of segment (in grid columns).
+            third_dimension_size (int): Size of the third dimension of the array.
             data_dir (str): Folder with the file.
             """
         self._file_name = file_name
@@ -79,7 +85,7 @@ class GridManager(Generic[GridType]):
             os.makedirs(self._data_dir)
 
         self._create_file(rows_number, columns_number, upper_left_longitude, upper_left_latitude, grid_density,
-                          segment_h, segment_w)
+                          segment_h, segment_w, third_dimension_size)
         self._metadata = self._read_metadata()
 
     def write_segment(self, segment: GridType, segment_row: int, segment_col: int):
@@ -114,7 +120,7 @@ class GridManager(Generic[GridType]):
         Returns:
             metadata (GridFileMetadata): Metadata of the file.
         """
-        DESIRED_METADATA_NUMBER = 9
+        DESIRED_METADATA_NUMBER = 10
         with open(os.path.join(self._data_dir, self._file_name), "r", encoding="latin1") as file:
             first_line = file.readline()[:-1]  # without \n
             metadata_bytes = file.tell()
@@ -132,14 +138,15 @@ class GridManager(Generic[GridType]):
                 float(splitted[5]),  # grid_density
                 int(splitted[6]),  # segment_h
                 int(splitted[7]),  # segment_w
-                splitted[8]  # byteorder
+                splitted[8],  # byteorder
+                int(splitted[9]) # third_dimension_size
             ]
             result += [metadata_bytes]
 
             return GridFileMetadata(*result)
 
     def _create_file(self, rows_number: int, columns_number: int, upper_left_longitude: float,
-                     upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int):
+                     upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int, third_dimension_size: int):
         """Creates a file for grid. If the file already exists, uses current one, if the metadata match.
          Args:
             rows_number (int): Number of rows of the whole gird (not just the segment).
@@ -169,13 +176,12 @@ class GridManager(Generic[GridType]):
                 f"File was not found and not all arguments required for creating a new one were provided.")
 
         self._create_file_v1(rows_number, columns_number, upper_left_longitude, upper_left_latitude, grid_density,
-                             segment_h, segment_w)
+                             segment_h, segment_w, third_dimension_size)
 
     def _create_file_v1(self, rows_number: int, columns_number: int, upper_left_longitude: float,
-                        upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int):
+                        upper_left_latitude: float, grid_density: float, segment_h: int, segment_w: int, third_dimension_size: int):
         """Create a file for points grid. File has the target size from the beginning (does not grow as a result of saving new segments)."""
         metadata_bytes = 0
-        CELL_SIZE = 8  # ZMIANA: 8 bajtów (2 kanały * 4 bajty float32)
 
         with open(os.path.join(self._data_dir, self._file_name), "w", encoding="latin1") as file:
             file.write(METADATA_SEPARATOR.join(map(str, [
@@ -187,11 +193,12 @@ class GridManager(Generic[GridType]):
                 grid_density,
                 segment_h,
                 segment_w,
-                sys.byteorder
+                sys.byteorder,
+                third_dimension_size
             ])))
             file.write("\n")
             metadata_bytes = file.tell()
-            file.seek(metadata_bytes + rows_number * columns_number * CELL_SIZE - 1)
+            file.seek(metadata_bytes + rows_number * columns_number * third_dimension_size * SINGLE_CELL_SIZE - 1)
             file.write('\0')
 
     def _write_segment_v1(self, segment: GridType, segment_row: int, segment_col: int):
@@ -200,7 +207,7 @@ class GridManager(Generic[GridType]):
 
         if len(segment.shape) == 2:
             h, w = segment.shape
-            new_segment = np.zeros((h, w, 2), dtype=np.float32)
+            new_segment = np.zeros((h, w, 3), dtype=np.float32)
             new_segment[:, :, 0] = segment
             segment = new_segment
 
@@ -246,7 +253,7 @@ class GridManager(Generic[GridType]):
         if segment_col == segments_n_horizontally - 1:
             w = cols_n % self._metadata.segment_w or self._metadata.segment_w
 
-        SEEKED_SEGMENT_SHAPE = (h, w, 2)
+        SEEKED_SEGMENT_SHAPE = (h, w, self._metadata.third_dimension_size)
 
         with open(os.path.join(self._data_dir, self._file_name), "rb") as file:
             file.seek(self._coords_to_file_position(segment_row, segment_col))
@@ -284,17 +291,16 @@ class GridManager(Generic[GridType]):
         cols_n = self._metadata.columns_number
         seg_h = self._metadata.segment_h
         seg_w = self._metadata.segment_w
+        third_dimension_size = self._metadata.third_dimension_size
 
-        CELL_SIZE = 8  # bytes per stored value (2 * float32)
-
-        full_segment_bytes = seg_h * seg_w * CELL_SIZE
+        full_segment_bytes = seg_h * seg_w * third_dimension_size * SINGLE_CELL_SIZE
 
         full_segments_per_row = cols_n // seg_w
         remainder_cols = cols_n % seg_w
 
         remainder_segment_bytes = 0
         if remainder_cols > 0:
-            remainder_segment_bytes = seg_h * remainder_cols * CELL_SIZE
+            remainder_segment_bytes = seg_h * remainder_cols * third_dimension_size * SINGLE_CELL_SIZE
 
         row_bytes = full_segment_bytes * full_segments_per_row + remainder_segment_bytes
 
@@ -305,9 +311,34 @@ class GridManager(Generic[GridType]):
         if segment_row == segments_vert - 1:
             current_row_h = rows_n % seg_h or seg_h  # obsługa 0
 
-        position += segment_column * (current_row_h * seg_w * CELL_SIZE)
+        position += segment_column * (current_row_h * seg_w * third_dimension_size * SINGLE_CELL_SIZE)
 
         return position
+    
+    def deep_copy(self) -> GridFileMetadata:
+        path, extension = os.path.splitext(self._file_name)
+        copied_file_name = path + "_copy" + extension
+
+        shutil.copyfile(os.path.join(self._data_dir, self._file_name), os.path.join(self._data_dir, copied_file_name))
+
+        copied = GridManager(
+            copied_file_name,
+            self._metadata.rows_number,
+            self._metadata.columns_number,
+            self._metadata.upper_left_longitude,
+            self._metadata.upper_left_latitude,
+            self._metadata.grid_density,
+            self._metadata.segment_h,
+            self._metadata.segment_w,
+            self._data_dir,
+            self._metadata.third_dimension_size,
+            )
+
+        return copied
+    
+    def delete(self):
+        os.remove(os.path.join(self._data_dir, self._file_name))
+
 
     def get_metadata(self) -> GridFileMetadata:
         """Get object metadata.
