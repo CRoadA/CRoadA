@@ -9,7 +9,8 @@ import math
 import os
 import srtm
 from pyproj import Transformer
-
+import srtm
+from pyproj import Transformer
 
 class DataLoader():
     grid_density: float
@@ -90,8 +91,6 @@ class DataLoader():
         """
         Enriches the existing grid with elevation data retrieved from NASA SRTM.
         """
-        import srtm
-        from pyproj import Transformer
 
         print("Initializing SRTM data provider...")
         geo_data = srtm.get_data()
