@@ -108,7 +108,7 @@ class PredictClippingSequence(Sequence):
         self._clipping_size = clipping_size
         self._input_surplus = input_grid_surplus
 
-        self._grid_manager = grid_manager
+        self._grid_manager = grid_manager.deep_copy()
         self._grid_metadata = self._grid_manager.get_metadata()
         self._grid_rows, self._grid_cols = self._grid_metadata.rows_number, self._grid_metadata.columns_number
         self._segment_rows, self._segment_cols = self._grid_metadata.segment_h, self._grid_metadata.segment_w
@@ -150,7 +150,7 @@ class PredictClippingSequence(Sequence):
         )
         batch_item = Model.clean_input(batch_item)
         prediction = self._model._keras_model.predict(tf.expand_dims(batch_item, axis=0))
-
+        #self._grid_manager.write_segment(prediction[0], cut_start_y, cut_start_x) # TODO - what if clippings are smaller than segment size?
         return prediction[0]
 
     def save(self):

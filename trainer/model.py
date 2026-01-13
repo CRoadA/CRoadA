@@ -8,7 +8,7 @@ from grid_manager import GRID_INDICES, GridManager
 import trainer.batch_sequence as batch_sequence
 
 
-class TRAINING_GRID_INDICES(Enum):
+class TRAINING_GRID_INDICES:
     IS_PREDICTED = 0
     IS_STREET = GRID_INDICES.IS_STREET + 1
     ALTITUDE = GRID_INDICES.ALTITUDE + 1
