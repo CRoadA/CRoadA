@@ -9,6 +9,93 @@ from .utils import is_conflicting_point, bfs
 
 import matplotlib.pyplot as plt
 
+
+def _enrich_street_metrics(streets: list[StreetDiscovery], grid_part: Grid, density: float):
+    """
+    Oblicza szerokość, nachylenie podłużne i poprzeczne dla każdej drogi.
+    """
+    is_street_mask = grid_part[:, :, GRID_INDICES.IS_STREET]
+    altitudes = grid_part[:, :, GRID_INDICES.ALTITUDE]
+
+    for street in streets:
+        pts = street.linestring
+        if len(pts) < 2:
+            continue
+
+        long_slopes = []
+        widths = []
+        trans_slopes = []
+
+        # Próbkujemy co kilka punktów
+        step = 3
+        for i in range(0, len(pts) - 1, step):
+            p1 = pts[i]
+            p2 = pts[min(i + step, len(pts) - 1)]
+
+            # 1. NACHYLENIE PODŁUŻNE
+            h1 = altitudes[p1[0], p1[1]]
+            h2 = altitudes[p2[0], p2[1]]
+            dist_px = np.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
+            dist_m = dist_px * density
+
+            if dist_m > 0:
+                slope = abs(h2 - h1) / dist_m
+                long_slopes.append(slope)
+
+
+            dy = p2[0] - p1[0]
+            dx = p2[1] - p1[1]
+
+            # Wektor prostopadły (normalna)
+            norm_y, norm_x = -dx, dy
+            length = np.sqrt(norm_y ** 2 + norm_x ** 2)
+            if length == 0: continue
+
+            unit_y = norm_y / length
+            unit_x = norm_x / length
+
+            # Szukamy krawędzi drogi w obie strony (lewo/prawo)
+            edge_l, h_l = _find_road_edge(p1, (unit_y, unit_x), is_street_mask, altitudes)
+            edge_r, h_r = _find_road_edge(p1, (-unit_y, -unit_x), is_street_mask, altitudes)
+
+            width_m = (edge_l + edge_r) * density
+            if width_m > 0:
+                widths.append(width_m)
+                # Nachylenie poprzeczne:
+                t_slope = abs(h_l - h_r) / width_m
+                trans_slopes.append(t_slope)
+
+        street.max_longitudinal_slope = max(long_slopes) if long_slopes else 0.0
+        street.max_transversal_slope = max(trans_slopes) if trans_slopes else 0.0
+        street.width = np.median(widths) if widths else 0.0
+
+
+def _find_road_edge(start_pt, direction, mask, altitudes):
+    """Kroczy wzdłuż wektora aż napotka koniec maski drogi."""
+    curr_y, curr_x = float(start_pt[0]), float(start_pt[1])
+    h, w = mask.shape
+    dist = 0
+    last_h = altitudes[start_pt[0], start_pt[1]]
+
+    while True:
+        next_y = int(round(curr_y + direction[0]))
+        next_x = int(round(curr_x + direction[1]))
+
+        # Wyjście poza macierz lub poza maskę drogi
+        if next_y < 0 or next_y >= h or next_x < 0 or next_x >= w:
+            break
+        if not mask[next_y, next_x]:
+            break
+
+        curr_y += direction[0]
+        curr_x += direction[1]
+        dist += 1
+        last_h = altitudes[next_y, next_x]
+
+        if dist > 100: break  # Safety break (droga nie może mieć 1km szerokości)
+
+    return dist, last_h
+
 def discover_streets(grid_part: Grid) -> tuple[list[CrossroadDiscovery], list[CrossroadDiscovery], list[StreetDiscovery], list[StreetDiscovery]]:
     """Discover streets for given grid part.
 
@@ -81,6 +168,8 @@ def discover_streets(grid_part: Grid) -> tuple[list[CrossroadDiscovery], list[Cr
         street_starts,
         street_ends
     )
+    density = 1.0  # właściwą wartość z GridManager
+    _enrich_street_metrics(conflicting_streets + conflictless_streets, grid_part, density)
 
     return (
         conflictless_crossroads,
