@@ -320,7 +320,7 @@ class GridManager(Generic[GridType]):
         path, extension = os.path.splitext(self._file_name)
 
         epoch_time = int(time.time())
-        copied_file_name = path + "_copy_" + epoch_time + extension
+        copied_file_name = path + "_copy_" + str(epoch_time) + extension
 
         shutil.copyfile(os.path.join(self._data_dir, self._file_name), os.path.join(self._data_dir, copied_file_name))
 
