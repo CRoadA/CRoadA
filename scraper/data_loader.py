@@ -11,6 +11,9 @@ import srtm
 from pyproj import Transformer
 import srtm
 from pyproj import Transformer
+# Debug
+import matplotlib.pyplot as plt
+import cv2
 
 class DataLoader():
     grid_density: float
@@ -58,6 +61,9 @@ class DataLoader():
                                    data_dir=self.data_dir, upper_left_longitude=min_x, upper_left_latitude=max_y)
         print(f"Height: {int(rows_number)}, Width: {int(columns_number)}, rows: {segment_rows}, cols: {segment_cols}")
 
+        # Debug
+        merged = np.zeros((int(rows_number), int(columns_number)))
+
         rasterizer = Rasterizer()
         for i in range(segment_rows):
             for j in range(segment_cols):
@@ -84,6 +90,17 @@ class DataLoader():
                 print(
                     f"Segment: {i}, {j} -> Expected: {expected_h}x{expected_w}, Got: {src_h}x{src_w}, Saved: {grid_3d.shape}")
                 grid_manager.write_segment(grid_3d, i, j)
+
+                # Debug
+                base_row = i * self.segment_h
+                base_col = j * self.segment_w
+                # if base_row == 0:
+                merged[base_row: base_row + copy_h, base_col: base_col + copy_w] = grid_2d[0:copy_h, 0:copy_w]
+
+        # Debug
+        struct_el = np.ones((3,3))
+        dilated = cv2.dilate(merged, struct_el, iterations=3)
+        plt.imshow(dilated)
 
         return grid_manager
 

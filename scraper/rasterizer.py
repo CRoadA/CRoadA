@@ -65,9 +65,11 @@ class Rasterizer():
             segment_max_y = max_y
             size_h = int((segment_max_y - segment_min_y) / pixel_size)
 
+        # transform = from_origin(int(segment_min_x), min_y - size_h, pixel_size, pixel_size)
         transform = from_origin(int(segment_min_x), int(segment_max_y), pixel_size, pixel_size)
 
         segment_bounds = shapely.geometry.box(segment_min_x, segment_min_y, segment_max_x, segment_max_y)
+        # segment_bounds = shapely.geometry.box(segment_min_x, segment_min_y, segment_max_x, segment_max_y)
         gdf_edges = gdf_edges.clip(segment_bounds)
 
         grid = features.rasterize(
