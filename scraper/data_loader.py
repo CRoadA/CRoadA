@@ -73,7 +73,7 @@ class DataLoader():
                 if j == segment_cols - 1:
                     expected_w = columns_number % self.segment_w or self.segment_w
 
-                grid_3d = np.zeros((expected_h, expected_w, 2), dtype=np.float32)
+                grid_3d = np.zeros((expected_h, expected_w, 3), dtype=np.float32)
 
                 src_h, src_w = grid_2d.shape
                 copy_h = min(src_h, expected_h)
