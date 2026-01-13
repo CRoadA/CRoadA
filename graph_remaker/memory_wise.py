@@ -26,4 +26,5 @@ def divide_into_parts(grid: Grid, part_size: int = 200):
             # TODO resolve conflicts by merging or removing?
             # TODO streets.append()
             # TODO crossroads.append()
+
     # TODO return OSMnx-like format?
