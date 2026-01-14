@@ -2,6 +2,7 @@ from grid_manager import GridManager
 try:
     from scraper.grid_builder import GridBuilder
     from scraper.rasterizer import Rasterizer
+    from scraper.geometry_processor import GeometryProcessor
 except ImportError:
     pass
 import numpy as np
@@ -11,6 +12,7 @@ import srtm
 from pyproj import Transformer
 import srtm
 from pyproj import Transformer
+import shapely
 
 class DataLoader():
     grid_density: float
@@ -61,7 +63,7 @@ class DataLoader():
         rasterizer = Rasterizer()
         for i in range(segment_rows):
             for j in range(segment_cols):
-                grid_2d = rasterizer.rasterize_segment_from_indexes(gdf_edges=gdf_edges, indexes=(i, j),
+                grid_2d = rasterizer.rasterize_segment_from_indexes(gdf_edges=gdf_edges, indexes=(i, j), is_residential=False,
                                                                     size_h=self.segment_h, size_w=self.segment_w,
                                                                     pixel_size=self.grid_density)
 
@@ -86,6 +88,7 @@ class DataLoader():
                 grid_manager.write_segment(grid_3d, i, j)
 
         return grid_manager
+
 
     def add_elevation_to_grid(self, grid_manager: GridManager):
         """
@@ -136,6 +139,42 @@ class DataLoader():
                 grid_manager.write_segment(segment, row_idx, col_idx)
 
                 print(f"Segment [{row_idx}, {col_idx}] saved. Max elevation: {np.max(segment[:, :, 1]):.2f} m")
+
+
+    def add_residential_to_grid(self, grid_manager : GridManager):
+        """
+        Enriches the existing grid with is_residential information.
+        """
+        meta = grid_manager.get_metadata()
+        city = grid_manager._file_name.split(".")[0]
+        builder = GridBuilder()
+        rasterizer = Rasterizer()
+        geometry_processor = GeometryProcessor()
+        gdf_edges = builder.get_city_roads(city)
+        gdf_residentials = gdf_edges[gdf_edges["is_residential"]]
+
+
+        segments_rows = math.ceil(meta.rows_number / meta.segment_h)
+        segments_cols = math.ceil(meta.columns_number / meta.segment_w)
+
+        print(f"Processing is_residential for {segments_rows}x{segments_cols} segments...")
+
+        for row_idx in range(segments_rows):
+            for col_idx in range(segments_cols):
+                segment = grid_manager.read_segment(row_idx, col_idx)
+
+                is_residential_grid = rasterizer.rasterize_segment_from_indexes(gdf_edges, indexes=(row_idx, col_idx), size_w=meta.segment_w, size_h=meta.segment_h, is_residential=True, pixel_size=meta.grid_density)
+                segment[:, :, 2] = is_residential_grid
+
+                grid_manager.write_segment(segment, row_idx, col_idx)
+
+                (min_coords, max_coords) = geometry_processor.get_segment_coordinates(gdf_edges, indexes=(row_idx, col_idx), size_w=meta.segment_w, size_h=meta.segment_h, pixel_size=meta.grid_density)
+                bounds = shapely.geometry.box(min_coords[0], min_coords[1], max_coords[0], max_coords[1])
+                gdf_segment = gdf_edges.clip(bounds)
+                gdf_segment_residential = gdf_residentials.clip(bounds) 
+
+                print(f"Segment [{row_idx}, {col_idx}] saved. Number of residential streets: {len(gdf_segment_residential)}, number of non residential streets: {len(gdf_segment) - len(gdf_segment_residential)}")
+    
 
     def _get_altitude_source(self, lat: float, lon: float, geo_data=None) -> float:
         """

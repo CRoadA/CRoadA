@@ -27,8 +27,8 @@ class GridFileMetadata():
     """Metadata of grid file.
     Attributes:
         version (int): Format version idenifier. An appropriate version of read/write function must be used (or just a general-purpose one).
-        rows_number (int): Number of rows of the whole gird (not just the segment).
-        columns_number (int): Number of columns of the whole gird (not just the segment).
+        rows_number (int): Number of rows of the whole grid (not just the segment).
+        columns_number (int): Number of columns of the whole grid (not just the segment).
         upper_left_longitude (float): Longitude of upper-left-most point in the file.
         upper_left_latitude (float): Latitude of upper-left-most point in the file.
         grid_density (float): Distance between two distinct closest points in grid (in meters).

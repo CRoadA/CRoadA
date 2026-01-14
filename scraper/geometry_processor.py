@@ -1,5 +1,7 @@
 import numpy as np
 from shapely.geometry import Polygon
+from shapely.geometry import Point
+import geopandas as gpd
 
 class GeometryProcessor():
     def get_straight_line_coefficients(self, x1, y1, x2, y2):
@@ -85,3 +87,54 @@ class GeometryProcessor():
             return None
 
         return polygon
+
+
+
+    def is_residential(self, gdf_edges: gpd.GeoDataFrame, coordinates : tuple[int, int]) -> bool:
+        point = Point(coordinates)
+
+        columns = gdf_edges.columns.to_list()
+
+        if "geometry" not in columns or "is_residential" not in columns:
+            return False
+
+        for _, row in gdf_edges.iterrows():
+            geometry = row["geometry"]
+            if isinstance(geometry, Polygon) and geometry.covers(point):
+                print(f"Geometry processor - is_residential: {bool(row["is_residential"])}")
+                return bool(row["is_residential"])
+
+        return False
+    
+
+    def is_residential_fast(self, gdf_edges: gpd.GeoDataFrame, coordinates: tuple[int, int]) -> bool:
+        columns = gdf_edges.columns.to_list()
+
+        if "geometry" not in columns or "is_residential" not in columns:
+            return False
+
+        point = Point(coordinates)
+
+        matches_mask = gdf_edges.geometry.covers(point)
+        matching_rows = gdf_edges[matches_mask]
+
+        if matching_rows.empty:
+            return False
+
+        return bool(matching_rows["is_residential"].any())
+    
+    
+
+    def get_segment_coordinates(self, gdf_edges: gpd.GeoDataFrame, indexes : tuple[int, int], size_w : int, size_h : int, pixel_size : int = 1) -> tuple[tuple[float, float], tuple[float, float]]:
+        min_x, min_y, max_x, max_y = gdf_edges.total_bounds
+        segment_min_x = min_x + indexes[1] * size_w * pixel_size
+        segment_max_x = segment_min_x + size_w * pixel_size
+        if segment_max_x > max_x:
+            segment_max_x = max_x
+            
+        segment_max_y = max_y - indexes[0] * size_h * pixel_size
+        segment_min_y = segment_max_y - size_h * pixel_size
+        if segment_min_y < min_y:
+            segment_min_y = min_y
+
+        return ((segment_min_x, segment_min_y), (segment_max_x, segment_max_y))
