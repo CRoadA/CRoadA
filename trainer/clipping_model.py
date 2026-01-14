@@ -2,6 +2,8 @@ import math
 import numpy as np
 import tensorflow as tf
 import os.path
+from tensorflow.keras import mixed_precision
+mixed_precision.set_global_policy("mixed_float16")
 
 Sequence = tf.keras.utils.Sequence
 
@@ -44,8 +46,8 @@ class ClippingModel(Model):
             #out_is_street = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(x)
             # Wyjście regresyjne (altitude): linear daje dowolne wartości
             #out_altitude = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(x)
-            out_is_street = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 0:1]), name="is_street")(x)
-            out_altitude = tf.keras.layers.Lambda(lambda t: t[..., 1:2], name="altitude")(x)
+            out_is_street = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 0:1]), name="is_street", dtype="float32")(x)
+            out_altitude = tf.keras.layers.Lambda(lambda t: t[..., 1:2], name="altitude", dtype="float32")(x)
             outputs = [out_is_street, out_altitude]
             self._keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
@@ -146,7 +148,9 @@ class ClippingModel(Model):
         path : str
             Path to save the model.
         """
-        self._keras_model.save(self._dir + "/" + str(tf.timestamp()) + "_model.keras")
+        if not os.path.exists(self._dir):
+            os.makedirs(self._dir)
+        self._keras_model.save(os.path.join(self._dir, str(tf.timestamp()) + "_model.keras"))
 
 
 class PredictClippingSequence(Sequence):
