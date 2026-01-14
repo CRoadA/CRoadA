@@ -59,10 +59,10 @@ class Rasterizer():
             segment_max_x = max_x
             size_w = int((segment_max_x - segment_min_x) / pixel_size)
 
-        segment_min_y = min_y + indexes[0] * size_h * pixel_size
-        segment_max_y = segment_min_y + size_h * pixel_size
-        if segment_max_y > max_y:
-            segment_max_y = max_y
+        segment_max_y = max_y - indexes[0] * size_h * pixel_size
+        segment_min_y = segment_max_y - size_h * pixel_size
+        if segment_min_y < min_y:
+            segment_min_y = min_y
             size_h = int((segment_max_y - segment_min_y) / pixel_size)
 
         transform = from_origin(int(segment_min_x), int(segment_max_y), pixel_size, pixel_size)
