@@ -1,3 +1,4 @@
+import pickle
 import os.path
 from typing import Any
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ class BatchSequence(Sequence):
         :param cut_sizes: List of possible cut sizes (rows, columns) to use when generating cuts from files.
         :type cut_sizes: list[tuple[int, int]]
         """
+        self._dir = "./tmp/batches/batch_sequences/cache/batch_sequence_" + str(1) + "_batch_" # TODO - time.time()
         self._files = files
         self._cut_sizes = cut_sizes
         self._batch_size = batch_size
@@ -48,20 +50,24 @@ class BatchSequence(Sequence):
         """Get number of batches per epoch."""
         return len(self._cut_sequences_per_file[0])
 
-    def __getitem__(self, index: int) -> list[tuple[tuple[int, int], GridManager]]:
+    def __getitem__(self, index: int) -> str:
         """Generate one batch of data == multiple files turned to cuts (a list of batch items, each being a list of cuts).
         Returns: batch - list of batch items (item == file), each being a list of cuts (start point and cut grid)."""
-        batch = []
-        # iter_len = len(self._iterators[index])
-        iter_len = len(self._cut_sequences_per_file[0])
-        for i in range(self._batch_size):
-            # # index and i can be replaced by each other
-            # batch.append(self._iterators[index].__getitem__(i % iter_len))
-            batch.append(
-                self._cut_sequences_per_file[i].__getitem__(index % iter_len)
-            )  # each iterator corresponds to one batch item
-
-        return batch
+        batch_dir = self._dir + str(index) + ".pkl"
+        if not os.path.isfile(batch_dir):
+            batch = []
+            # iter_len = len(self._iterators[index])
+            iter_len = len(self._cut_sequences_per_file[0])
+            for i in range(self._batch_size):
+                # # index and i can be replaced by each other
+                # batch.append(self._iterators[index].__getitem__(i % iter_len))
+                batch.append(
+                    self._cut_sequences_per_file[i].__getitem__(index % iter_len)
+                )  # each iterator corresponds to one batch item
+            with open(batch_dir, "wb") as f:
+                pickle.dump(batch, f)
+               
+        return batch_dir
 
     def batch_size(self) -> int:
         """Get the batch size."""

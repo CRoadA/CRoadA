@@ -111,7 +111,8 @@ class ClippingModel(Model):
             prediction = predict_sequence[i]
             # TODO - Combine predictions into a full grid manager?
             prediction_grid = BatchSequence.write_cut_to_grid_segments(
-                prediction, self._clipping_size, self._clipping_size, self._clipping_size, i * self._clipping_size, i * self._clipping_size, input._file_name, "./tmp/predictions/"
+                prediction, self._clipping_size, self._clipping_size, self._clipping_size,
+                i * self._clipping_size, i * self._clipping_size, input._file_name, "./tmp/predictions/"
             )  # TODO - check if the name is sufficient
             output_grids.append(prediction_grid)
 
