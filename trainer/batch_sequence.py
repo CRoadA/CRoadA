@@ -1,3 +1,4 @@
+import os.path
 from typing import Any
 from dataclasses import dataclass
 import numpy as np
@@ -194,27 +195,35 @@ class BatchSequence(Sequence):
         """
         cut_segment_rows = math.ceil(cut_size[0] / segment_h)  # number of segments in cut vertically
         cut_segment_columns = math.ceil(cut_size[1] / segment_w)  # number of segments in cut horizontally
-        cut_grid = GridManager[grid_type](
-            f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat",
-            cut_size[0],
-            cut_size[1],
-            0,
-            0,
-            1,
-            segment_h,
-            segment_w,
-            to_directory,
-        )
-        for segment_row in range(cut_segment_rows):
-            for segment_col in range(cut_segment_columns):
-                cut_grid.write_segment(
-                    cut[
-                        segment_row * segment_h : min((segment_row + 1) * segment_h, cut_size[0]),
-                        segment_col * segment_w : min((segment_col + 1) * segment_w, cut_size[1]),
-                    ],
-                    segment_row,
-                    segment_col,
-                )
+
+        # Check if the cut grid file already exists
+        file_path = os.path.join(to_directory, f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat")
+        cut_grid: GridManager = None
+        
+        if os.path.isfile(file_path):
+            cut_grid = GridManager(file_path)  # load grid manager
+        else:
+            cut_grid = GridManager[grid_type](
+                f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat",
+                cut_size[0],
+                cut_size[1],
+                0,
+                0,
+                1,
+                segment_h,
+                segment_w,
+                to_directory,
+            )
+            for segment_row in range(cut_segment_rows):
+                for segment_col in range(cut_segment_columns):
+                    cut_grid.write_segment(
+                        cut[
+                            segment_row * segment_h : min((segment_row + 1) * segment_h, cut_size[0]),
+                            segment_col * segment_w : min((segment_col + 1) * segment_w, cut_size[1]),
+                        ],
+                        segment_row,
+                        segment_col,
+                    )
         return cut_grid
 
 
@@ -253,7 +262,7 @@ class CutSequence(Sequence):
 
     def __getitem__(self, index: int) -> tuple[tuple[int, int], GridManager]:
         """Get the next random cut (part of a batch item) from the file (a batch item == multiple cuts)."""
-        # Choose random cut size
+        # Choose cut size - not random because of determinism
         cut_size = self._cut_sizes[index % len(self._cut_sizes)]
         if cut_size[0] > self._grid_rows or cut_size[1] > self._grid_cols:
             cut_size = (self._grid_rows, self._grid_cols)
