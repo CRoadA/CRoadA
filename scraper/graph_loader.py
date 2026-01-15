@@ -109,10 +109,14 @@ class GraphLoader():
         # mapping - typ drogi : szerokość
         highway_width = self.get_highways_width(graph)
 
+        # small_highways = ["living_street", "residential"]
+        small_highways = ["residential"]
+
         edges_info = []
         lanes_width_counter = 0
         highway_width_counter = 0
         for u, v, k, data in graph.edges(keys=True, data=True):
+            is_residential = False
             width = 0
             if 'length' in data:
                 length = data['length']
@@ -149,8 +153,14 @@ class GraphLoader():
             else:
                 width = 6
 
+            if "highway" in data:
+                hw = data['highway']
+                # if (isinstance(hw, list) and ("residential" in hw)) or hw in small_highways:
+                if not isinstance(hw, list) and hw in small_highways:
+                    is_residential = True
+
             if "geometry" in data:
-                edges_info.append({"id": data["osmid"],'u': u, 'v': v, 'length_m': length, 'width_m': width, "geometry" : data["geometry"]})
+                edges_info.append({"id": data["osmid"],'u': u, 'v': v, 'length_m': length, 'width_m': width, "geometry" : data["geometry"], "is_residential" : is_residential})
         print(f"Roads with 'width' attribute: {lanes_width_counter}\nRoads without 'width' attribute: {highway_width_counter}")
 
         return edges_info
