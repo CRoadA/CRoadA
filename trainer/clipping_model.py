@@ -219,3 +219,46 @@ class PredictClippingSequence(Sequence):
         prediction = self._model._keras_model.predict(tf.expand_dims(batch_item, axis=0))
         #self._grid_manager.write_segment(prediction[0], cut_start_y, cut_start_x) # TODO - what if clippings are smaller than segment size?
         return prediction[0]
+
+
+def unet(input_shape=(256, 256, 3), n_classes=1):
+    inputs = tf.keras.layers.Input(shape=input_shape)
+
+    # Encoder
+    c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(inputs)
+    c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(c1)
+    p1 = tf.keras.layers.MaxPooling2D()(c1)
+
+    c2 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(p1)
+    c2 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(c2)
+    p2 = tf.keras.layers.MaxPooling2D()(c2)
+
+    c3 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(p2)
+    c3 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(c3)
+    p3 = tf.keras.layers.MaxPooling2D()(c3)
+
+    # Bottleneck
+    b = tf.keras.layers.Conv2D(256, 3, activation='relu', padding='same')(p3)
+    b = tf.keras.layers.Conv2D(256, 3, activation='relu', padding='same')(b)
+    # Decoder
+    u3 = tf.keras.layers.UpSampling2D()(b)
+    u3 = tf.keras.layers.concatenate([u3, c3])
+    c4 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(u3)
+    c4 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(c4)
+
+    u2 = tf.keras.layers.UpSampling2D()(c4)
+    u2 = tf.keras.layers.concatenate([u2, c2])
+    c5 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(u2)
+    c5 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(c5)
+
+    u1 = tf.keras.layers.UpSampling2D()(c5)
+    u1 = tf.keras.layers.concatenate([u1, c1])
+    c6 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(u1)
+    c6 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(c6)
+
+    # Output heads
+    street_out = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6)
+    altitude_out = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6)
+
+    model = tf.keras.Model(inputs, [street_out, altitude_out])
+    return model
