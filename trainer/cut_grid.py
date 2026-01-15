@@ -1,6 +1,7 @@
 import math
 import os
 import numpy as np
+
 from grid_manager import GridManager, GridType
 
 def cut_from_grid_segments(
@@ -89,8 +90,6 @@ def cut_from_grid_segments(
             cut_x = np.hstack((cut_x, cut_y))
 
     return cut_x
-
-
 
 def write_cut_to_grid_segments(
     cut: np.ndarray,

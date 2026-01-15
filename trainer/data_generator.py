@@ -2,18 +2,43 @@ import math
 import random
 from typing import Any
 import numpy as np
+import tensorflow as tf
 
 from grid_manager import GridManager
 from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
 from trainer.model import Model
 
-InputGrid = np.ndarray[(Any, Any, 3), np.float64]
+InputGrid = np.ndarray[(Any, Any, 3), np.float32]
 """Like normal Grid, but with bools indicating, if it should be changed (the 0-th coordinate of the thrid dimension). If it is False, then the IS_STREET bool is treated as zero."""
 
-OutputGrid = np.ndarray[(Any, Any, 3), np.float64]
+OutputGrid = np.ndarray[(Any, Any, 3), np.float32]
 """Like normal grid, but next to IS_STREET and ALTITUDE, it contains also IS_RESIDENTIAL value."""
 
+def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int) -> tf.data.Dataset:
+    """Get TensorFlow dataset from clipping sample generator.
+    Each sample is a tuple (input, output), where:
+    - input is a numpy array of shape (clipping_size, clipping_size, 2) containing IS_STREET and ALTITUDE values,
+    - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
+    """
+    # Define output signature for the dataset - helps TensorFlow understand the shape and type of the data
+    output_signature = (
+        tf.TensorSpec(shape=(clipping_size, clipping_size, 2), dtype=tf.float32),
+        {
+            "is_street": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
+            "altitude": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
+        },
+    )
 
+    # Create dataset from generator
+    dataset = tf.data.Dataset.from_generator(
+        lambda: clipping_sample_generator(files, cut_sizes, clipping_size, input_surplus),
+        output_signature=output_signature,
+    )
+
+    # Batch and prefetch the dataset - to improve performance  
+    dataset = dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+    return dataset
 
 def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int):
     """Generates samples for clipping training.
@@ -22,17 +47,21 @@ def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]]
     - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
     while True:
+        # Select a random file and cut size
         file = random.choice(files)
         cut_size = random.choice(cut_sizes)
 
+        # Get a random cut from the file
         _, cut_grid = generate_cut(file, cut_size)
         metadata = cut_grid.get_metadata()
 
+        # Determine random clipping position within the cut grid
         max_x = metadata.columns_number - clipping_size
         max_y = metadata.rows_number - clipping_size
         clipping_x = random.randint(0, max_x)
         clipping_y = random.randint(0, max_y)
 
+        # Create the clipping from the cut grid
         clipping = cut_from_grid_segments(
             cut_grid,
             clipping_x,
@@ -43,73 +72,19 @@ def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]]
         )
 
         # TODO - when to clean? - (w uczeniu czasem powinien dostawać nie w pełni wyczyszczone dane czy nie?)
+        # Clean the clipping from IS_STREET data where IS_PREDICTED flag is on
         clipping = Model.clean_input(clipping)
-        x = clipping[:, :, 0:2] # TODO - without IS_RESIDENTIAL
+        # Prepare input and output
+        x = clipping[:, :, 0:2].astype(np.float32) # TODO - without IS_RESIDENTIAL
         output_clipping = clipping[
             int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
             int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
             :,
         ]
         # TODO - adjust IS_REGIONAL value - probably we meant local, residential roads - IS_RESIDENTIAL value
-        y_is_street = output_clipping[:, :, 0:1] # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
-        y_altitude = output_clipping[:, :, 1:2] # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        y_is_street = output_clipping[:, :, 0:1].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        y_altitude = output_clipping[:, :, 1:2].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
         yield x, {"is_street": y_is_street, "altitude": y_altitude}
-
-
-def generate_clippingbatch(files: list[str], batch_size: int, cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int) -> tuple[np.ndarray, np.ndarray]:
-    batch_x = []
-    batch_y_is_street = []
-    batch_y_altitude = []
-
-    for _ in range(batch_size):
-        file = random.choice(files)
-        cut_size = random.choice(cut_sizes)
-
-        _, cut_grid = generate_cut(file, cut_size)
-        metadata = cut_grid.get_metadata()
-
-        max_x = metadata.columns_number - clipping_size
-        max_y = metadata.rows_number - clipping_size
-        clipping_x = random.randint(0, max_x)
-        clipping_y = random.randint(0, max_y)
-
-        clipping = cut_from_grid_segments(
-            cut_grid,
-            clipping_x,
-            clipping_y,
-            (clipping_size, clipping_size),
-            input_surplus,
-            clipping=True,
-        )
-
-        # TODO - when to clean? - (w uczeniu czasem powinien dostawać nie w pełni wyczyszczone dane czy nie?)
-        clipping = Model.clean_input(clipping)
-        batch_x.append(clipping[:, :, 0:2]) # TODO - without IS_RESIDENTIAL
-        output_clipping = clipping[
-            int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
-            int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
-            :,
-        ]
-        # TODO - adjust IS_REGIONAL value - probably we meant local, residential roads - IS_RESIDENTIAL value
-        batch_y_is_street.append(output_clipping[:, :, 0:1]) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
-        batch_y_altitude.append(output_clipping[:, :, 1:2]) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
-
-    batch_x = np.stack(batch_x)
-    batch_y_is_street = np.stack(batch_y_is_street)
-    batch_y_altitude = np.stack(batch_y_altitude)
-
-    return batch_x, {"is_street": batch_y_is_street, "altitude": batch_y_altitude}
-
-
-def generate_cutbatch(files: list[str], index: int, batch_size: int, cut_sizes: list[tuple[int, int]]):
-    """Generate one batch of data == multiple files turned to cuts (a list of batch items, each being a list of cuts).
-    Returns: batch - list of batch items (item == file), each being a list of cuts (start point and cut grid)."""
-    
-    batch = []
-    for i_file in range(batch_size):
-        batch.append(generate_cut(index, files[i_file], batch_size, cut_sizes))
-
-    return batch
 
 def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int], GridManager]:
     """Get the next random cut (part of a batch item) from the file (a batch item == multiple cuts)."""

@@ -1,4 +1,5 @@
 import math
+from time import time
 import numpy as np
 import tensorflow as tf
 import os.path
@@ -8,8 +9,9 @@ mixed_precision.set_global_policy("mixed_float16")
 Sequence = tf.keras.utils.Sequence
 
 from trainer.model import Model
-from trainer.clipping_sequence import BatchSequence, ClippingBatchSequence, InputGrid, OutputGrid
 from grid_manager import GridManager
+from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
+from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
 
 
 class ClippingModel(Model):
@@ -28,27 +30,25 @@ class ClippingModel(Model):
         self._clipping_size = clipping_size
         self._clipping_surplus = clipping_surplus
 
-        if not os.path.isfile(path):
-            # Model architecture here - #TODO: Define the actual architecture
+        if not path is None and not os.path.isfile(path):
+            # Model architecture here
             inputs = tf.keras.layers.Input(shape=(self._clipping_size, self._clipping_size, 2)) # TODO - without IS_RESIDENTIAL
             x = tf.keras.layers.Conv2D(16, 5, activation="relu", padding="same", strides=1)(inputs)
             x = tf.keras.layers.Conv2D(8, 5, activation="relu", padding="same", strides=1)(x)
             x = tf.keras.layers.Conv2D(4, 5, activation="relu", padding="same", strides=1)(x)
 
-            # Oblicz ile trzeba przyciąć z każdej strony
+            # How much to crop to get rid of surplus
             crop = self._clipping_surplus // 2
             x = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(x)
 
-            # Jedna warstwa wyjściowa z dwoma kanałami
+            # One output layer with two channels
             x = tf.keras.layers.Conv2D(2, 1, activation=None, name="output")(x)
 
-            # Wyjście binarne (is_street): sigmoid daje wartości w [0, 1]
-            #out_is_street = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(x)
-            # Wyjście regresyjne (altitude): linear daje dowolne wartości
-            #out_altitude = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(x)
+            # Split outputs into two separate heads
             out_is_street = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 0:1]), name="is_street", dtype="float32")(x)
             out_altitude = tf.keras.layers.Lambda(lambda t: t[..., 1:2], name="altitude", dtype="float32")(x)
             outputs = [out_is_street, out_altitude]
+
             self._keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
 
@@ -66,8 +66,8 @@ class ClippingModel(Model):
             self._keras_model.compile(
                 optimizer="adam",
                 loss={
-                    "is_street": "binary_crossentropy",   # dla maski ulicy
-                    "altitude": "mse"                     # dla wysokości
+                    "is_street": "binary_crossentropy",
+                    "altitude": "mse"
                 },
                 loss_weights={"is_street": 1.0, "altitude": 1.0},
                 metrics={
@@ -78,16 +78,33 @@ class ClippingModel(Model):
         else:
             self._keras_model = tf.keras.models.load_model(path)
 
-    def fit(self, input: ClippingBatchSequence, epochs: int = 1, steps_per_epoch: int = 1000):
+    def fit(self, train_files: list[str], val_files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, epochs: int = 1, steps_per_epoch: int = 1000):
         """Fit model to the given data.
 
         Parameters
         ----------
-        input : ClippingBatchSequence
+        train_files : list[str]
             Input batch sequence with clipped grids.
+        val_files : list[str]
+            Validation batch sequence with clipped grids.
+        cut_sizes : list[tuple[int, int]]
+            List of cut sizes to use for generating training data.
+        clipping_size : int
+            Size of the clipping for input grids.
+        input_surplus : int
+            Surplus size of input grid compared to output grid.
+        batch_size : int
+            Size of each training batch.
+        epochs : int, optional
+            Number of epochs to train the model, by default 1
+        steps_per_epoch : int, optional
+            Number of steps per epoch, by default 1000
         """
-        # TODO: Implement proper training logic
-        self._keras_model.fit(input, epochs=epochs, steps_per_epoch=steps_per_epoch)
+        # Create TensorFlow datasets for training and validation
+        train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size)
+        val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size)
+        # Fit the model using the datasets
+        self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10)
 
     def predict(self, input: GridManager[InputGrid]) -> list[GridManager[OutputGrid]]:
         """Predicts grid for given input.
@@ -112,7 +129,7 @@ class ClippingModel(Model):
         for i in range(len(predict_sequence)):
             prediction = predict_sequence[i]
             # TODO - Combine predictions into a full grid manager?
-            prediction_grid = BatchSequence.write_cut_to_grid_segments(
+            prediction_grid = write_cut_to_grid_segments(
                 prediction, self._clipping_size, self._clipping_size, self._clipping_size,
                 i * self._clipping_size, i * self._clipping_size, input._file_name, "./tmp/predictions/"
             )  # TODO - check if the name is sufficient
@@ -150,7 +167,7 @@ class ClippingModel(Model):
         """
         if not os.path.exists(self._dir):
             os.makedirs(self._dir)
-        self._keras_model.save(os.path.join(self._dir, str(tf.timestamp()) + "_model.keras"))
+        self._keras_model.save(os.path.join(self._dir, str(int(time()))) + "_model.keras")
 
 
 class PredictClippingSequence(Sequence):
@@ -208,7 +225,7 @@ class PredictClippingSequence(Sequence):
         )  # TODO - what when the surplus makes us go out of bounds - should we complete the grid with zeros?
         cut_start_y = row * step
 
-        batch_item = BatchSequence.cut_from_grid_segments(
+        batch_item = cut_from_grid_segments(
             self._grid_manager,
             cut_start_x,
             cut_start_y,
