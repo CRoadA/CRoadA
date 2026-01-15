@@ -1,8 +1,9 @@
 import math
-from time import time
 import numpy as np
-import tensorflow as tf
+from time import time
 import os.path
+from enum import Enum
+import tensorflow as tf
 from tensorflow.keras import mixed_precision
 mixed_precision.set_global_policy("mixed_float16")
 
@@ -12,10 +13,19 @@ from trainer.model import Model
 from grid_manager import GridManager
 from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
 from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
+from trainer.model_architectures import *
 
+class ClipModels(Enum):
+    BASE = "base_clipping_model"
+    UNET = "unet"
+
+clip_models = {
+    ClipModels.BASE: base_clipping_model,
+    ClipModels.UNET: unet,
+}
 
 class ClippingModel(Model):
-    def __init__(self, clipping_size: int = 512, clipping_surplus: int = 64, path: str | None = None):
+    def __init__(self, model_type: ClipModels, clipping_size: int = 512, clipping_surplus: int = 64, path: str | None = None, **kwargs):
         """
         Initializes the ClippingModel with specified clipping size and surplus.
         
@@ -32,37 +42,9 @@ class ClippingModel(Model):
 
         if not path is None and not os.path.isfile(path):
             # Model architecture here
-            inputs = tf.keras.layers.Input(shape=(self._clipping_size, self._clipping_size, 2)) # TODO - without IS_RESIDENTIAL
-            x = tf.keras.layers.Conv2D(16, 5, activation="relu", padding="same", strides=1)(inputs)
-            x = tf.keras.layers.Conv2D(8, 5, activation="relu", padding="same", strides=1)(x)
-            x = tf.keras.layers.Conv2D(4, 5, activation="relu", padding="same", strides=1)(x)
+            self._keras_model = clip_models[model_type](clipping_size=self._clipping_size, clipping_surplus=self._clipping_surplus, third_dimension=2, **kwargs)
 
-            # How much to crop to get rid of surplus
-            crop = self._clipping_surplus // 2
-            x = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(x)
-
-            # One output layer with two channels
-            x = tf.keras.layers.Conv2D(2, 1, activation=None, name="output")(x)
-
-            # Split outputs into two separate heads
-            out_is_street = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 0:1]), name="is_street", dtype="float32")(x)
-            out_altitude = tf.keras.layers.Lambda(lambda t: t[..., 1:2], name="altitude", dtype="float32")(x)
-            outputs = [out_is_street, out_altitude]
-
-            self._keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
-
-
-            # self._keras_model.compile(
-            #     optimizer="adam",
-            #     loss="mse",
-            #     loss_weights=None,
-            #     metrics=None,
-            #     weighted_metrics=None,
-            #     run_eagerly=False,
-            #     steps_per_execution=1,
-            #     jit_compile="auto",
-            #     auto_scale_loss=True,
-            # )
+            # Compile the model
             self._keras_model.compile(
                 optimizer="adam",
                 loss={
@@ -236,46 +218,3 @@ class PredictClippingSequence(Sequence):
         prediction = self._model._keras_model.predict(tf.expand_dims(batch_item, axis=0))
         #self._grid_manager.write_segment(prediction[0], cut_start_y, cut_start_x) # TODO - what if clippings are smaller than segment size?
         return prediction[0]
-
-
-def unet(input_shape=(256, 256, 3), n_classes=1):
-    inputs = tf.keras.layers.Input(shape=input_shape)
-
-    # Encoder
-    c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(inputs)
-    c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(c1)
-    p1 = tf.keras.layers.MaxPooling2D()(c1)
-
-    c2 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(p1)
-    c2 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(c2)
-    p2 = tf.keras.layers.MaxPooling2D()(c2)
-
-    c3 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(p2)
-    c3 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(c3)
-    p3 = tf.keras.layers.MaxPooling2D()(c3)
-
-    # Bottleneck
-    b = tf.keras.layers.Conv2D(256, 3, activation='relu', padding='same')(p3)
-    b = tf.keras.layers.Conv2D(256, 3, activation='relu', padding='same')(b)
-    # Decoder
-    u3 = tf.keras.layers.UpSampling2D()(b)
-    u3 = tf.keras.layers.concatenate([u3, c3])
-    c4 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(u3)
-    c4 = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(c4)
-
-    u2 = tf.keras.layers.UpSampling2D()(c4)
-    u2 = tf.keras.layers.concatenate([u2, c2])
-    c5 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(u2)
-    c5 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(c5)
-
-    u1 = tf.keras.layers.UpSampling2D()(c5)
-    u1 = tf.keras.layers.concatenate([u1, c1])
-    c6 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(u1)
-    c6 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(c6)
-
-    # Output heads
-    street_out = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6)
-    altitude_out = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6)
-
-    model = tf.keras.Model(inputs, [street_out, altitude_out])
-    return model
