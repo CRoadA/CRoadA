@@ -14,6 +14,48 @@ OutputGrid = np.ndarray[(Any, Any, 3), np.float64]
 """Like normal grid, but next to IS_STREET and ALTITUDE, it contains also IS_RESIDENTIAL value."""
 
 
+
+def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int):
+    """Generates samples for clipping training.
+    Yields tuples (input, output), where:
+    - input is a numpy array of shape (clipping_size, clipping_size, 2) containing IS_STREET and ALTITUDE values,
+    - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
+    """
+    while True:
+        file = random.choice(files)
+        cut_size = random.choice(cut_sizes)
+
+        _, cut_grid = generate_cut(file, cut_size)
+        metadata = cut_grid.get_metadata()
+
+        max_x = metadata.columns_number - clipping_size
+        max_y = metadata.rows_number - clipping_size
+        clipping_x = random.randint(0, max_x)
+        clipping_y = random.randint(0, max_y)
+
+        clipping = cut_from_grid_segments(
+            cut_grid,
+            clipping_x,
+            clipping_y,
+            (clipping_size, clipping_size),
+            input_surplus,
+            clipping=True,
+        )
+
+        # TODO - when to clean? - (w uczeniu czasem powinien dostawać nie w pełni wyczyszczone dane czy nie?)
+        clipping = Model.clean_input(clipping)
+        x = clipping[:, :, 0:2] # TODO - without IS_RESIDENTIAL
+        output_clipping = clipping[
+            int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
+            int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
+            :,
+        ]
+        # TODO - adjust IS_REGIONAL value - probably we meant local, residential roads - IS_RESIDENTIAL value
+        y_is_street = output_clipping[:, :, 0:1] # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        y_altitude = output_clipping[:, :, 1:2] # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        yield x, {"is_street": y_is_street, "altitude": y_altitude}
+
+
 def generate_clippingbatch(files: list[str], batch_size: int, cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int) -> tuple[np.ndarray, np.ndarray]:
     batch_x = []
     batch_y_is_street = []
@@ -52,11 +94,11 @@ def generate_clippingbatch(files: list[str], batch_size: int, cut_sizes: list[tu
         batch_y_is_street.append(output_clipping[:, :, 0:1]) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
         batch_y_altitude.append(output_clipping[:, :, 1:2]) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
 
-        batch_x = np.stack(batch_x)
-        batch_y_is_street = np.stack(batch_y_is_street)
-        batch_y_altitude = np.stack(batch_y_altitude)
+    batch_x = np.stack(batch_x)
+    batch_y_is_street = np.stack(batch_y_is_street)
+    batch_y_altitude = np.stack(batch_y_altitude)
 
-        return batch_x, {"is_street": batch_y_is_street, "altitude": batch_y_altitude}
+    return batch_x, {"is_street": batch_y_is_street, "altitude": batch_y_altitude}
 
 
 def generate_cutbatch(files: list[str], index: int, batch_size: int, cut_sizes: list[tuple[int, int]]):
