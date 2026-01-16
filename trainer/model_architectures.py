@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+# test model
 def base_clipping_model(clipping_size=512, clipping_surplus=64, third_dimension=2, **kwargs):
     inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension)) # TODO - without IS_RESIDENTIAL
     x = tf.keras.layers.Conv2D(16, 5, activation="relu", padding="same", strides=1)(inputs)
@@ -21,7 +22,7 @@ def base_clipping_model(clipping_size=512, clipping_surplus=64, third_dimension=
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
-
+# UNet architecture for clipping model proposed by ChatGPT
 def unet(clipping_size=512, clipping_surplus=64, third_dimension=3, **kwargs):
     inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension))
 

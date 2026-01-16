@@ -65,7 +65,7 @@ def cut_from_grid_segments(
     # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
     for indx_x in range(which_segment_start_x, which_segment_end_x + 1):
         for indx_y in range(which_segment_start_y, which_segment_end_y + 1):
-            # TODO - memory issue -> adjust the maximal segment size or something => we will have proper segment sizes anyway
+            # memory issue -> adjust the maximal segment size or something -> we will have proper segment sizes anyway
             segment_y = grid_manager.read_segment(indx_y, indx_x)
             print(f"Reading segment at ({indx_x}, {indx_y}) with shape {segment_y.shape}")  # Debug print
 

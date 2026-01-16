@@ -1,4 +1,3 @@
-import math
 import random
 from typing import Any
 import numpy as np
@@ -26,6 +25,7 @@ def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_
         {
             "is_street": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
             "altitude": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
+            # TODO - add IS_RESIDENTIAL when data is ready
         },
     )
 
@@ -71,19 +71,28 @@ def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]]
             clipping=True,
         )
 
-        # TODO - when to clean? - (w uczeniu czasem powinien dostawać nie w pełni wyczyszczone dane czy nie?)
+        # Prepare input and output for the model
+
         # Clean the clipping from IS_STREET data where IS_PREDICTED flag is on
         clipping = Model.clean_input(clipping)
-        # Prepare input and output
-        x = clipping[:, :, 0:2].astype(np.float32) # TODO - without IS_RESIDENTIAL
+        # without IS_RESIDENTIAL, but with IS_MODIFIABLE
+        x = clipping[:, :, 0:3].astype(np.float32) # Keras does not like float64
+        # Fill IS_MODIFIABLE channel with ones -> we want to use all data for training
+        x[:, :, 2] = 1
+
+        # Prepare the area which we expect the model to predict
         output_clipping = clipping[
             int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
             int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
             :,
         ]
-        # TODO - adjust IS_REGIONAL value - probably we meant local, residential roads - IS_RESIDENTIAL value
+
+        # Prepare output values
         y_is_street = output_clipping[:, :, 0:1].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
         y_altitude = output_clipping[:, :, 1:2].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        # TODO - add y_is_residential when data is ready
+
+        # Yield the input-output pair - TensorFlow will handle batching
         yield x, {"is_street": y_is_street, "altitude": y_altitude}
 
 def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int], GridManager]:
@@ -109,8 +118,10 @@ def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int],
     cut = cut_from_grid_segments(grid_manager, cut_start_x, cut_start_y, cut_size, surplus=0, clipping=False)
 
     cut = np.copy(cut)
-    cut = np.resize(cut, (cut_size[0], cut_size[1], cut.shape[2] + 1))  # is modifiable # TODO - check IS_PREDICTED case
+    # Ensure the cut has the correct number of channels (including IS_MODIFIABLE channel)
+    cut = np.resize(cut, (cut_size[0], cut_size[1], cut.shape[2] + 1))
 
+    # Write cut to a temporary GridManager to return
     cut_grid = write_cut_to_grid_segments(
         cut,
         cut_size,
@@ -123,4 +134,5 @@ def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int],
         InputGrid
     )
 
+    # Return the cut starting position and the cut grid manager
     return ((cut_start_x, cut_start_y), cut_grid)

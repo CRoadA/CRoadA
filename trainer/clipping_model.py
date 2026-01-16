@@ -152,7 +152,7 @@ class ClippingModel(Model):
         self._keras_model.save(os.path.join(self._dir, str(int(time()))) + "_model.keras")
 
 
-class PredictClippingSequence(Sequence):
+class PredictClippingSequence(Sequence): # TODO - test and modify if needed
     """Sequence that divides input grids into batches for prediction using ClippingModel."""
 
     def __init__(
