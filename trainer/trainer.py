@@ -12,7 +12,7 @@ class Trainer:
         self._model = model
         self._files = files
 
-    def random_fit_from_files(self, epochs: int = 100, steps_per_epoch=1000):
+    def random_fit_from_files(self, epochs: int = 100, steps_per_epoch=1000, batch_size: int = 32):
         """Perform training on model.
         Args:
             fits_count (int): Number of fits to perform."""
@@ -22,7 +22,7 @@ class Trainer:
             cut_sizes=[(self._model.get_input_clipping_size(), self._model.get_input_clipping_size())],
             clipping_size=self._model.get_input_clipping_size(),
             input_surplus=self._model.get_input_grid_surplus(),
-            batch_size=32,
+            batch_size=batch_size,
             epochs=epochs,
             steps_per_epoch=steps_per_epoch
         )
