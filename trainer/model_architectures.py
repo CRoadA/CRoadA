@@ -76,15 +76,14 @@ def alex_inspired(clipping_size=512, clipping_surplus=64, third_dimension=4, **k
     inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension))
 
     # Encoder
-    c1 = tf.keras.layers.Conv2D(filters=96, kernel_size=11, strides=4, activation='relu', padding="same")(inputs)
-    s2 = tf.keras.layers.MaxPooling2D(pool_size=3, strides=2, padding="valid")(c1)
+    c1 = tf.keras.layers.Conv2D(filters=96, kernel_size=11, strides=1, activation='relu', padding="same")(inputs)
+    s2 = tf.keras.layers.MaxPooling2D(pool_size=3, strides=2, padding="same")(c1)
     c3 = tf.keras.layers.Conv2D(filters=256, kernel_size=5, strides=1, activation='relu', padding="same")(s2)
-    s4 = tf.keras.layers.MaxPooling2D(pool_size=3, strides=2, padding="valid")(c3)
+    s4 = tf.keras.layers.MaxPooling2D(pool_size=3, strides=2, padding="same")(c3)
     c5 = tf.keras.layers.Conv2D(filters=384, kernel_size=3, strides=1, activation='relu', padding="same")(s4)
     c6 = tf.keras.layers.Conv2D(filters=384, kernel_size=3, strides=1, activation='relu', padding="same")(c5)
     c7 = tf.keras.layers.Conv2D(filters=256, kernel_size=3, strides=1, activation='relu', padding="same")(c6)
-    s8 = tf.keras.layers.MaxPooling2D(pool_size=3, strides=2, padding="valid")(c7)
-
+    s8 = tf.keras.layers.MaxPooling2D(pool_size=3, strides=2, padding="same")(c7)
     # Bottleneck
     b9 = tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, activation='relu', padding="same")(s8)
     b10 = tf.keras.layers.Conv2D(filters=512, kernel_size=3, strides=1, activation='relu', padding="same")(b9)
@@ -100,7 +99,7 @@ def alex_inspired(clipping_size=512, clipping_surplus=64, third_dimension=4, **k
     c16 = tf.keras.layers.Conv2D(filters=256, kernel_size=5, strides=1, activation='relu', padding="same")(u15)
     u17 = tf.keras.layers.UpSampling2D()(c16)
     u17 = tf.keras.layers.concatenate([u17, c1])
-    c18 = tf.keras.layers.Conv2D(filters=96, kernel_size=11, strides=4, activation='relu', padding="same")(u17)
+    c18 = tf.keras.layers.Conv2D(filters=96, kernel_size=11, strides=1, activation='relu', padding="same")(u17)
 
     # Crop to remove surplus
     crop = clipping_surplus // 2
