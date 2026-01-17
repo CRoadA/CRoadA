@@ -21,11 +21,13 @@ class ClipModels(Enum):
     BASE = "base_clipping_model"
     UNET = "unet"
     ALEX_INSPIRED = "alex_inspired"
+    SHALLOWED_UNET = "shallowed_unet"
 
 clip_models = {
     ClipModels.BASE: base_clipping_model,
     ClipModels.UNET: unet,
-    ClipModels.ALEX_INSPIRED: alex_inspired
+    ClipModels.ALEX_INSPIRED: alex_inspired,
+    ClipModels.SHALLOWED_UNET: test_clipping_model_shallowed_unet
 }
 
 class ClippingModel(Model):

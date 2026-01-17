@@ -112,3 +112,42 @@ def alex_inspired(clipping_size=512, clipping_surplus=64, third_dimension=4, **k
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
+
+
+# test model
+def test_clipping_model_shallowed_unet(clipping_size=512, clipping_surplus=64, third_dimension=4, **kwargs):
+    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension))
+
+    # Encoder
+    c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(inputs)
+    c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(c1)
+    p1 = tf.keras.layers.MaxPooling2D()(c1)
+
+    c2 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(p1)
+    c2 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(c2)
+    p2 = tf.keras.layers.MaxPooling2D()(c2)
+
+    # Bottleneck
+    b = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(p2)
+    b = tf.keras.layers.Conv2D(128, 3, activation='relu', padding='same')(b)
+    # Decoder
+    u2 = tf.keras.layers.UpSampling2D()(b)
+    u2 = tf.keras.layers.concatenate([u2, c2])
+    c5 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(u2)
+    c5 = tf.keras.layers.Conv2D(64, 3, activation='relu', padding='same')(c5)
+
+    u1 = tf.keras.layers.UpSampling2D()(c5)
+    u1 = tf.keras.layers.concatenate([u1, c1])
+    c6 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(u1)
+    c6 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(c6)
+
+    # Crop to remove surplus
+    crop = clipping_surplus // 2
+    c6 = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(c6)
+
+    # Output heads
+    street_out = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6)
+    altitude_out = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6)
+
+    model = tf.keras.Model(inputs, [street_out, altitude_out])
+    return model
