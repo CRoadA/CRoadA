@@ -15,13 +15,17 @@ from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
 from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
 from trainer.model_architectures import *
 
+THIRD_DIMENSION = 3  # IS_STREET, ALTITUDE, IS_MODIFIABLE
+
 class ClipModels(Enum):
     BASE = "base_clipping_model"
     UNET = "unet"
+    ALEX_INSPIRED = "alex_inspired"
 
 clip_models = {
     ClipModels.BASE: base_clipping_model,
     ClipModels.UNET: unet,
+    ClipModels.ALEX_INSPIRED: alex_inspired
 }
 
 class ClippingModel(Model):
@@ -42,7 +46,7 @@ class ClippingModel(Model):
 
         if not path is None and not os.path.isfile(path):
             # Model architecture here
-            self._keras_model = clip_models[model_type](clipping_size=self._clipping_size, clipping_surplus=self._clipping_surplus, third_dimension=2, **kwargs)
+            self._keras_model = clip_models[model_type](clipping_size=self._clipping_size, clipping_surplus=self._clipping_surplus, third_dimension=THIRD_DIMENSION, **kwargs) # TODO - without IS_RESIDENTIAL (third dimension = 3)
 
             # Compile the model
             self._keras_model.compile(
@@ -83,8 +87,8 @@ class ClippingModel(Model):
             Number of steps per epoch, by default 1000
         """
         # Create TensorFlow datasets for training and validation
-        train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size)
-        val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size)
+        train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size, third_dimension=THIRD_DIMENSION)
+        val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size, third_dimension=THIRD_DIMENSION)
         # Fit the model using the datasets
         self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10)
 

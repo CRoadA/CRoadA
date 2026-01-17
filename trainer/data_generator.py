@@ -13,15 +13,15 @@ InputGrid = np.ndarray[(Any, Any, 3), np.float32]
 OutputGrid = np.ndarray[(Any, Any, 3), np.float32]
 """Like normal grid, but next to IS_STREET and ALTITUDE, it contains also IS_RESIDENTIAL value."""
 
-def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int) -> tf.data.Dataset:
+def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, third_dimension: int = 3) -> tf.data.Dataset:
     """Get TensorFlow dataset from clipping sample generator.
     Each sample is a tuple (input, output), where:
-    - input is a numpy array of shape (clipping_size, clipping_size, 2) containing IS_STREET and ALTITUDE values,
+    - input is a numpy array of shape (clipping_size, clipping_size, 3) containing IS_STREET, ALTITUDE and IS_MODIFIABLE values,
     - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
     # Define output signature for the dataset - helps TensorFlow understand the shape and type of the data
     output_signature = (
-        tf.TensorSpec(shape=(clipping_size, clipping_size, 2), dtype=tf.float32),
+        tf.TensorSpec(shape=(clipping_size, clipping_size, third_dimension), dtype=tf.float32),
         {
             "is_street": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
             "altitude": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
@@ -43,7 +43,7 @@ def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_
 def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int):
     """Generates samples for clipping training.
     Yields tuples (input, output), where:
-    - input is a numpy array of shape (clipping_size, clipping_size, 2) containing IS_STREET and ALTITUDE values,
+    - input is a numpy array of shape (clipping_size, clipping_size, 3) containing IS_STREET, ALTITUDE and IS_MODIFIABLE values,
     - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
     while True:
