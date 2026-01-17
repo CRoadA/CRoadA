@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 from grid_manager import GridManager
-from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
+from trainer.cut_grid import cut_from_cut, cut_from_grid_segments
 from trainer.model import Model
 
 InputGrid = np.ndarray[(Any, Any, 3), np.float32]
@@ -52,18 +52,17 @@ def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]]
         cut_size = random.choice(cut_sizes)
 
         # Get a random cut from the file
-        _, cut_grid = generate_cut(file, cut_size)
-        metadata = cut_grid.get_metadata()
+        _, cut = generate_cut(file, cut_size)
 
         # Determine random clipping position within the cut grid
-        max_x = metadata.columns_number - clipping_size
-        max_y = metadata.rows_number - clipping_size
+        max_x = cut.shape[1] - clipping_size
+        max_y = cut.shape[0] - clipping_size
         clipping_x = random.randint(0, max_x)
         clipping_y = random.randint(0, max_y)
 
         # Create the clipping from the cut grid
-        clipping = cut_from_grid_segments(
-            cut_grid,
+        clipping = cut_from_cut(
+            cut,
             clipping_x,
             clipping_y,
             (clipping_size, clipping_size),
@@ -95,7 +94,7 @@ def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]]
         # Yield the input-output pair - TensorFlow will handle batching
         yield x, {"is_street": y_is_street, "altitude": y_altitude}
 
-def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int], GridManager]:
+def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int], np.ndarray]:
     """Get the next random cut (part of a batch item) from the file (a batch item == multiple cuts)."""
     grid_manager = GridManager(file)  # load grid manager
     grid_metadata = grid_manager.get_metadata()
@@ -121,18 +120,5 @@ def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int],
     # Ensure the cut has the correct number of channels (including IS_MODIFIABLE channel)
     cut = np.resize(cut, (cut_size[0], cut_size[1], cut.shape[2] + 1))
 
-    # Write cut to a temporary GridManager to return
-    cut_grid = write_cut_to_grid_segments(
-        cut,
-        cut_size,
-        grid_metadata.segment_w,
-        grid_metadata.segment_h,
-        cut_start_x,
-        cut_start_y,
-        file,
-        "./tmp/batches/batch_sequences/cuts/",
-        InputGrid
-    )
-
     # Return the cut starting position and the cut grid manager
-    return ((cut_start_x, cut_start_y), cut_grid)
+    return ((cut_start_x, cut_start_y), cut)

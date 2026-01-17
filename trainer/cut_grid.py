@@ -156,3 +156,52 @@ def write_cut_to_grid_segments(
                     segment_col,
                 )
     return cut_grid
+
+
+
+def cut_from_cut(
+    cut_input: np.ndarray, cut_start_x: int, cut_start_y: int, cut_size: tuple[int, int], surplus: int = 0, clipping: bool = False
+) -> np.ndarray:
+    """Create a cut grid from given cut grid as a numpy array. No need to worry about cut_size exceeding boundaries - it is handled inside.
+
+    Parameters
+    ----------
+    cut_input : np.ndarray
+        Input cut grid as a numpy array.
+    cut_start_x : int
+        Starting x coordinate of the cut.
+    cut_start_y : int
+        Starting y coordinate of the cut.
+    cut_size : tuple[int, int]
+        Size of the cut (rows, columns).
+    surplus : int, optional
+        Surplus size to consider around the cut, by default 0
+    clipping : bool, optional
+        Whether the cut is for clipping purposes, by default False
+    Returns
+    -------
+    np.ndarray
+        Cut grid as a numpy array.
+    """
+    print(f"Requested cut at ({cut_start_x}, {cut_start_y}) of size {cut_size} with surplus {surplus}, clipping={clipping}")  # Debug print
+    # Adjust surplus if it exceeds boundaries # TODO - Add padding if needed instead of reducing surplus
+    surplus = max(min(surplus, cut_start_x, cut_start_y, cut_size[0], cut_size[1]), 0)
+
+    if clipping:
+        # Calculate start point with surplus
+        cut_start_x = int(cut_start_x * (cut_size[0] - surplus) - (surplus / 2))
+        cut_start_y = int(cut_start_y * (cut_size[1] - surplus) - (surplus / 2))
+    else:
+        cut_start_x = int(cut_start_x - surplus/2)
+        cut_start_y = int(cut_start_y - surplus/2)
+    cut_start_x = min(cut_start_x, cut_input.shape[1] - cut_size[0])
+    cut_start_y = min(cut_start_y, cut_input.shape[0] - cut_size[1])
+    
+    # Calculate end point
+    cut_end_x = min(cut_start_x + cut_size[0], cut_input.shape[1])
+    cut_end_y = min(cut_start_y + cut_size[1], cut_input.shape[0])
+
+    # Cut the cut
+    cut_output = cut_input[cut_start_y : cut_end_y, cut_start_x : cut_end_x]
+
+    return cut_output
