@@ -1,3 +1,4 @@
+import pickle
 import os.path
 from typing import Any
 from dataclasses import dataclass
@@ -39,7 +40,7 @@ class BatchSequence(Sequence):
         # Temporarily: one batch item -> cut size from the given list
         # OTHER POSSIBILITY: one batch -> one cut size
         self._cut_sequences_per_file = [
-            CutSequence(file=self._files[i_file], cut_sizes=cut_sizes, sequence=self) for i_file in range(batch_size)
+            CutSequence(file=self._files[i_file], cut_sizes=cut_sizes, sequence=self) for i_file in range(len(self._files))
         ]  # pre-create cut sequences for each file in the batch
         # I was thinking about making each iterator correspond to a specific part (segments) of each file
         # OR about reading firstly -> random parts of one file -> CutSequence must be quite deterministic because of the fact that Keras Sequence (like ClippingBatchSequence) relies on indexing to get the next batch - not remembering state
@@ -48,7 +49,7 @@ class BatchSequence(Sequence):
         """Get number of batches per epoch."""
         return len(self._cut_sequences_per_file[0])
 
-    def __getitem__(self, index: int) -> list[tuple[tuple[int, int], GridManager]]:
+    def __getitem__(self, index: int) -> str:
         """Generate one batch of data == multiple files turned to cuts (a list of batch items, each being a list of cuts).
         Returns: batch - list of batch items (item == file), each being a list of cuts (start point and cut grid)."""
         batch = []
@@ -58,9 +59,9 @@ class BatchSequence(Sequence):
             # # index and i can be replaced by each other
             # batch.append(self._iterators[index].__getitem__(i % iter_len))
             batch.append(
-                self._cut_sequences_per_file[i].__getitem__(index % iter_len)
+                self._cut_sequences_per_file[i % len(self._files)].__getitem__(index % iter_len)
             )  # each iterator corresponds to one batch item
-
+            
         return batch
 
     def batch_size(self) -> int:
