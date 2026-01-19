@@ -28,7 +28,7 @@ def cut_from_grid_segments(
     np.ndarray
         Cut grid as a numpy array.
     """
-    print(f"Requested cut at ({cut_start_x}, {cut_start_y}) of size {cut_size} with surplus {surplus}, clipping={clipping}")  # Debug print
+    # print(f"Requested cut at ({cut_start_x}, {cut_start_y}) of size {cut_size} with surplus {surplus}, clipping={clipping}")  # Debug print
     # Adjust surplus if it exceeds boundaries # TODO - Add padding if needed instead of reducing surplus
     surplus = max(min(surplus, cut_start_x, cut_start_y, cut_size[0], cut_size[1]), 0)
 
@@ -52,14 +52,14 @@ def cut_from_grid_segments(
     # Determine which segments to read
     segment_w, segment_h = metadata.segment_w, metadata.segment_h
     
-    print(f"Cut from segments: start_x={cut_start_x}, start_y={cut_start_y}, end_x={cut_end_x}, end_y={cut_end_y}")  # Debug print
-    print(f"Segment size: w={segment_w}, h={segment_h}")  # Debug print
+    # print(f"Cut from segments: start_x={cut_start_x}, start_y={cut_start_y}, end_x={cut_end_x}, end_y={cut_end_y}")  # Debug print
+    # print(f"Segment size: w={segment_w}, h={segment_h}")  # Debug print
     which_segment_start_x = int(cut_start_x // segment_w)
     which_segment_start_y = int(cut_start_y // segment_h)
     which_segment_end_x = int((cut_end_x - 1) // segment_w)
     which_segment_end_y = int((cut_end_y - 1) // segment_h)
 
-    print(f"Segments to read: start_x={which_segment_start_x}, start_y={which_segment_start_y}, end_x={which_segment_end_x}, end_y={which_segment_end_y}")  # Debug print
+    # print(f"Segments to read: start_x={which_segment_start_x}, start_y={which_segment_start_y}, end_x={which_segment_end_x}, end_y={which_segment_end_y}")  # Debug print
     cut_x = np.array([])  # Grid()
     cut_y = np.array([])
     # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
@@ -67,7 +67,7 @@ def cut_from_grid_segments(
         for indx_y in range(which_segment_start_y, which_segment_end_y + 1):
             # memory issue -> adjust the maximal segment size or something -> we will have proper segment sizes anyway
             segment_y = grid_manager.read_segment(indx_y, indx_x)
-            print(f"Reading segment at ({indx_x}, {indx_y}) with shape {segment_y.shape}")  # Debug print
+            # print(f"Reading segment at ({indx_x}, {indx_y}) with shape {segment_y.shape}")  # Debug print
 
             # Merge segment_y into cut_y vertically.
             if indx_y == which_segment_start_y and indx_y == which_segment_end_y:
@@ -183,7 +183,7 @@ def cut_from_cut(
     np.ndarray
         Cut grid as a numpy array.
     """
-    print(f"Requested cut at ({cut_start_x}, {cut_start_y}) of size {cut_size} with surplus {surplus}, clipping={clipping}")  # Debug print
+    # print(f"Requested cut at ({cut_start_x}, {cut_start_y}) of size {cut_size} with surplus {surplus}, clipping={clipping}")  # Debug print
     # Adjust surplus if it exceeds boundaries # TODO - Add padding if needed instead of reducing surplus
     surplus = max(min(surplus, cut_start_x, cut_start_y, cut_size[0], cut_size[1]), 0)
 
