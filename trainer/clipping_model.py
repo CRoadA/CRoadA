@@ -92,7 +92,7 @@ class ClippingModel(Model):
         train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size, third_dimension=THIRD_DIMENSION)
         val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size, third_dimension=THIRD_DIMENSION)
         # Fit the model using the datasets
-        self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10)
+        self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1)
 
     def predict(self, input: GridManager[InputGrid]) -> list[GridManager[OutputGrid]]:
         """Predicts grid for given input.
