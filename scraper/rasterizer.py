@@ -7,7 +7,7 @@ import math
 
 class Rasterizer():
 
-    def get_rasterize_roads(self, gdf_edges, is_residential : bool, pixel_size = 1):
+    def get_rasterize_roads(self, gdf_edges : gpd.GeoDataFrame, is_residential : bool, pixel_size : int = 1):
         min_x, min_y, max_x, max_y = gdf_edges.total_bounds
         width_m = int(max_x - min_x)
         height_m = int(max_y - min_y)
@@ -29,7 +29,7 @@ class Rasterizer():
         return grid
     
     
-    def rasterize_segment_from_coordinates(self, gdf_edges, min_x, max_x, min_y, max_y, is_residential : bool, pixel_size=1):
+    def rasterize_segment_from_coordinates(self, gdf_edges : gpd.GeoDataFrame, min_x : float, max_x : float, min_y : float, max_y : float, is_residential : bool, pixel_size : int = 1):
         gdfmin_x, gdfmin_y, gdfmax_x, gdfmax_y = gdf_edges.total_bounds
         real_min_x = max(min_x, gdfmin_x)
         real_max_x = min(max_x, gdfmax_x)

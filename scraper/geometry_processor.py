@@ -2,6 +2,7 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.geometry import Point
 import geopandas as gpd
+import math
 
 class GeometryProcessor():
     def get_straight_line_coefficients(self, x1, y1, x2, y2):
@@ -138,3 +139,58 @@ class GeometryProcessor():
             segment_min_y = min_y
 
         return ((segment_min_x, segment_min_y), (segment_max_x, segment_max_y))
+    
+
+    def get_circle_radius(self, p1, p2, p3):
+        # ze wzoru Herona i trójkąta wpisanego 
+        x1, y1 = p1
+        x2, y2 = p2
+        x3, y3 = p3
+        
+        a = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        b = np.sqrt((x3 - x2)**2 + (y3 - y2)**2)
+        c = np.sqrt((x1 - x3)**2 + (y1 - y3)**2)
+        
+        if a < 0.0001 or b < 0.0001 or c < 0.0001:
+            # print(f"a: {a}, b: {b}, c: {c}")
+            return np.inf
+
+        s = (a + b + c) / 2
+        
+        val = s * (s - a) * (s - b) * (s - c)
+        if val <= 0:
+            return np.inf
+            
+        area = np.sqrt(val)
+        
+        if area == 0:
+            return np.inf
+        
+        R = (a * b * c) / (4 * area)
+        return R
+    
+
+    def _get_distance(self, p1, p2):
+        return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+    
+
+    def _get_deviation_angle(self, p_in, p_center, p_out):
+        # Wektor wejściowy (u -> v)
+        v1_x = p_center[0] - p_in[0]
+        v1_y = p_center[1] - p_in[1]
+        
+        # Wektor wyjściowy (v -> w)
+        v2_x = p_out[0] - p_center[0]
+        v2_y = p_out[1] - p_center[1]
+        
+
+        angle1 = math.atan2(v1_y, v1_x)
+        angle2 = math.atan2(v2_y, v2_x)
+        
+        diff = abs(angle1 - angle2)
+        
+        # do przedziału [0, PI]
+        if diff > math.pi:
+            diff = 2 * math.pi - diff
+            
+        return diff

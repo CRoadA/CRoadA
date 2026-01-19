@@ -150,7 +150,7 @@ class DataLoader():
         builder = GridBuilder()
         rasterizer = Rasterizer()
         geometry_processor = GeometryProcessor()
-        gdf_edges = builder.get_city_roads(city)
+        gdf_edges = builder.get_city_roads(city, residential_max_radius=30)
         gdf_residentials = gdf_edges[gdf_edges["is_residential"]]
 
 

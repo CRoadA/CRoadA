@@ -2,6 +2,7 @@ import numpy as np
 import osmnx as ox
 from shapely import LineString
 import geopandas as gpd
+import networkx as nx
 
 class GraphLoader():
     def __init__(self, poland_crs = 2180, basic_crs = 4326):
@@ -9,12 +10,12 @@ class GraphLoader():
         self.basic_crs = basic_crs
 
 
-    def load_graph(self, city_name):
+    def load_graph(self, city_name : str) -> nx.MultiDiGraph:
         graph = ox.graph.graph_from_place(city_name, network_type="drive", simplify=False)
         return graph
     
 
-    def get_all_highways(self, graph):
+    def get_all_highways(self, graph : nx.MultiDiGraph):
         highways = []
         for u, v, k, data in graph.edges(keys=True, data=True):
             if "highway" in data and data["highway"] not in highways and not isinstance(data["highway"], list):
@@ -24,7 +25,7 @@ class GraphLoader():
 
         return highways
 
-    def get_avg_width(self, graph, highway):
+    def get_avg_width(self, graph : nx.MultiDiGraph, highway : str) -> float:
         count_street = 0
         sum_width = 0
 
@@ -36,11 +37,13 @@ class GraphLoader():
                         width = np.mean([self.convert(x, "float") for x in data["width"]])         
                     else:
                         width = self.convert(data["width"], "float")
-                elif 'lanes' in data or width is None:
+                elif 'lanes' in data and data["lanes"]:
                     if isinstance(data["lanes"], list):
                         width = np.mean([self.convert(x, "int") for x in data["lanes"]]) * 3
                     else:
-                        width = self.convert(data["lanes"], "int") * 3  # przyjmujemy 3 m na pas
+                        lanes = self.convert(data["lanes"], "int")
+                        if lanes:
+                            width = lanes * 3  # przyjmujemy 3 m na pas
                 if width is not None:
                     sum_width += width
                     count_street += 1
@@ -94,7 +97,7 @@ class GraphLoader():
 
 
 
-    def get_highways_width(self, graph):
+    def get_highways_width(self, graph : nx.MultiDiGraph) -> dict[str, float]:
         highways = self.get_all_highways(graph)
         avg_width = {}
 
@@ -104,7 +107,7 @@ class GraphLoader():
         return avg_width
     
 
-    def get_edges_measurements(self, graph):
+    def get_edges_measurements(self, graph : nx.MultiDiGraph, residential_max_radius : float) -> list[dict]:
 
         # mapping - typ drogi : szerokość
         highway_width = self.get_highways_width(graph)
@@ -116,8 +119,9 @@ class GraphLoader():
         lanes_width_counter = 0
         highway_width_counter = 0
         for u, v, k, data in graph.edges(keys=True, data=True):
+            name = None
             is_residential = False
-            width = 0
+            width = None
             if 'length' in data:
                 length = data['length']
             elif 'geometry' in data:
@@ -131,43 +135,74 @@ class GraphLoader():
             else:
                 length = 0
 
-            if 'width' in data:
+            if 'width' in data and data["width"]:
                 lanes_width_counter += 1
                 if isinstance(data["width"], list):
                     width = np.mean([self.convert(x, "float") for x in data["width"]])         
                 else:
                     width = self.convert(data["width"], "float")
-                        
-            elif 'lanes' in data or width is None:
-                lanes_width_counter += 1
-                if isinstance(data["lanes"], list):
-                    width = np.mean([self.convert(x, "int") for x in data["lanes"]]) * 3
-                else:
-                    width = self.convert(data["lanes"], "int") * 3  # przyjmujemy 3 m na pas
-            elif 'highway' in data or width is None:
-                highway_width_counter += 1
-                hw = data['highway']
-                if isinstance(hw, list):
-                    hw = hw[0]
-                width = highway_width.get(hw)
             else:
-                width = 6
-
-            if "highway" in data:
+                if 'lanes' in data and data["lanes"] and width is None:
+                    lanes_width_counter += 1
+                    if isinstance(data["lanes"], list):
+                        width = np.mean([self.convert(x, "int") for x in data["lanes"]]) * 3
+                    else:
+                        lanes = self.convert(data["lanes"], "int")
+                        if lanes:
+                            width = lanes * 3 # przyjmujemy 3 m na pas
+                elif 'highway' in data and data["highway"] and width is None:
+                    highway_width_counter += 1
+                    hw = data['highway']
+                    if isinstance(hw, list):
+                        hw = hw[0]
+                    width = highway_width.get(hw)
+                else:
+                    width = 6
+ 
+            if "highway" in data and "turning_radius" in data:
+                radius = data["turning_radius"]
                 hw = data['highway']
-                # if (isinstance(hw, list) and ("residential" in hw)) or hw in small_highways:
-                if not isinstance(hw, list) and hw in small_highways:
+                if not isinstance(hw, list) and hw in small_highways and radius < residential_max_radius:
                     is_residential = True
+                    
+            if "name" in data:
+                name = data["name"]
 
             if "geometry" in data:
-                edges_info.append({"id": data["osmid"],'u': u, 'v': v, 'length_m': length, 'width_m': width, "geometry" : data["geometry"], "is_residential" : is_residential})
+                edges_info.append({"id": data["osmid"],'u': u, 'v': v, 'length_m': length, 'width_m': width, "geometry" : data["geometry"], "is_residential" : is_residential, "name" : name, "radius" : data["turning_radius"]})
         print(f"Roads with 'width' attribute: {lanes_width_counter}\nRoads without 'width' attribute: {highway_width_counter}")
 
         return edges_info
     
 
-    def convert_to_gdf(self, edges):
+    def convert_to_gdf(self, edges : list[dict]) -> gpd.GeoDataFrame:
         gdf_edges = gpd.GeoDataFrame(edges, crs=self.basic_crs)
         gdf_edges["geometry"] = gdf_edges["geometry"].to_crs(epsg=self.poland_crs)
         return gdf_edges
+    
+
+
+    def get_graph_for_street(self, graph : nx.MultiDiGraph, street_name : str) -> nx.MultiDiGraph:
+        # lista krawędzi, które pasują do nazwy
+        selected_edges = []
+
+        for u, v, k, data in graph.edges(keys=True, data=True):
+            name_attr = data.get("name")
+            
+            match = False
+            
+            if isinstance(name_attr, list):
+                if street_name in name_attr:
+                    match = True
+            
+            elif name_attr == street_name:
+                match = True
+                
+            if match:
+                selected_edges.append((u, v, k))
+
+        # tworzymy podgraf tylko z wybranymi krawędziami
+        subgraph = graph.edge_subgraph(selected_edges).copy()
+        
+        return subgraph
         
