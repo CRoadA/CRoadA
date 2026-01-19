@@ -38,6 +38,9 @@ class ClippingBatchSequence(Sequence):
 
     def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
 
+        batches = None
+        batch_item_index = 0
+        clipping_index = 0
         result = 0
         found = False
         for base_batch_index in range(len(self._base_sequence)):
@@ -51,9 +54,9 @@ class ClippingBatchSequence(Sequence):
                     cols_number / (self._clipping_size - self._input_surplus)
                 )
                 if result >= index:
-                    self._batches = self._base_sequence[base_batch_index]
-                    self.batch_item_index = base_batch_item_index
-                    self._clipping_index = index - (
+                    batches = self._base_sequence[base_batch_index]
+                    batch_item_index = base_batch_item_index
+                    clipping_index = index - (
                         result
                         - math.ceil(rows_number / (self._clipping_size - self._input_surplus))
                         * math.ceil(cols_number / (self._clipping_size - self._input_surplus))
@@ -66,7 +69,7 @@ class ClippingBatchSequence(Sequence):
         batch_x = []
         batch_y = []
 
-        _, cut_grid = self._batches[self.batch_item_index]
+        _, cut_grid = batches[batch_item_index]
         metadata = cut_grid.get_metadata()
         clipping_rows, clipping_cols = (
             math.ceil((metadata.rows_number - self._input_surplus) / (self._clipping_size - self._input_surplus)),
@@ -74,10 +77,10 @@ class ClippingBatchSequence(Sequence):
         )
 
         for _ in range(self._base_sequence.batch_size()):
-            clipping_x = self._clipping_index % clipping_cols
-            clipping_y = self._clipping_index // clipping_cols
+            clipping_x = clipping_index % clipping_cols
+            clipping_y = clipping_index // clipping_cols
 
-            print("Clipping index:", self._clipping_index, "->", clipping_x, clipping_y) # Debug print
+            print("Clipping index:", clipping_index, "->", clipping_x, clipping_y) # Debug print
             # Cut the clipping from the cut grid
             clipping = BatchSequence.cut_from_grid_segments(
                 cut_grid,
@@ -97,7 +100,7 @@ class ClippingBatchSequence(Sequence):
                 :,
             ]
             # TODO - adjust IS_REGIONAL value - probably we meant local, residential roads - IS_RESIDENTIAL value
-            #batch_y.append(output_clipping[:, :, 0:2])  # only IS_STREET and ALTITUDE
+            # batch_y.append(output_clipping[:, :, 0:2])  # only IS_STREET and ALTITUDE
             batch_y_is_street = output_clipping[:, :, 0:1]  # shape: (448, 448, 1)
             batch_y_altitude = output_clipping[:, :, 1:2]   # shape: (448, 448, 1)
             batch_y.append([batch_y_is_street, batch_y_altitude])
@@ -107,4 +110,5 @@ class ClippingBatchSequence(Sequence):
         batch_x = np.stack(batch_x)
         batch_y_is_street = np.stack([y[0] for y in batch_y])
         batch_y_altitude = np.stack([y[1] for y in batch_y])
+
         return batch_x, {"is_street": batch_y_is_street, "altitude": batch_y_altitude}

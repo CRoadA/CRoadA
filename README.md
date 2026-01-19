@@ -7,8 +7,8 @@
 ## Features
 
 - Batch generation from large grid files
-- Randomized and deterministic cut sequences for data augmentation
-- Support for multi-threaded data loading via Keras Sequences
+- Randomized cuts generator for data augmentation
+- Support for optimal data loading via Keras prefetching
 - Grid segment reading and writing utilities
 - Extensible for various grid types and training scenarios
 
@@ -49,7 +49,7 @@ CRoadA/
 │   ├── Zabrze.city_grid
 │   └── ...
 ├── __init__.py
-├── main.ipynb
+├── main.ipynb                    -> an overview for visualisation of the whole project
 ├── __pycache__
 │   └── ...
 ├── README.md
@@ -86,13 +86,16 @@ CRoadA/
 │               ├── przyklad1.dat_cut_1034_28_1000_1000.dat
 │               └── ...
 └── trainer
-    ├── batch_sequence.py
-    ├── clipping_model.py
-    ├── clipping_sequence.py
-    ├── model.py
     ├── __pycache__
     │   └── ...
-    └── trainer.py
+    ├── batch_sequence.py         -> for visualisation of batch items (not used by models)
+    ├── clipping_model.py         -> model main logic
+    ├── clipping_sequence.py      -> for visualisation of batch items (not used by models)
+    ├── cut_grid.py               -> cut from/to files utils
+    ├── data_generator.py         -> cut generation logic (for batches in keras model)
+    ├── model_architectures.py    -> place for models used in clipping_model.py
+    ├── model.py                  -> abstract class for the model
+    └── trainer.py                -> "main" class for the trainer module (interface for training)
 ```
 
 ## Requirements
