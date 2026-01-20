@@ -10,8 +10,31 @@ class GraphLoader():
         self.basic_crs = basic_crs
 
 
-    def load_graph(self, city_name : str) -> nx.MultiDiGraph:
-        graph = ox.graph.graph_from_place(city_name, network_type="drive", simplify=False)
+    def load_graph(self, city_input: str) -> nx.MultiDiGraph:
+        city_parts = city_input.split(",")
+        cleaned_parts = [p.strip() for p in city_parts]
+        
+        place = {}
+        if len(cleaned_parts) > 1:
+            place = {"city": cleaned_parts[0], "country": cleaned_parts[1]}
+        else:
+            place = {"city": cleaned_parts[0]}
+        
+        try:
+            graph = ox.graph_from_place(place, network_type="drive", simplify=False)
+        except Exception as e:
+            print(f"Error while searching for 'city': ({e}). The next try is searching for 'town'.")
+            place["town"] = place.pop("city")
+            try:
+                graph = ox.graph_from_place(place, network_type="drive", simplify=False)
+            except Exception as e:
+                print(f"Error while searching for 'town': ({e}). The next try is searching for 'village'.")
+                place["village"] = place.pop("town")
+                try:
+                    graph = ox.graph_from_place(place, network_type="drive", simplify=False)
+                except Exception as e:
+                    print(f"Error while searching for 'village': ({e})")
+                    
         return graph
     
 
