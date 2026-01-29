@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>PyQt OSM Map</title>
+<meta name="viewport" content="initial-scale=1.0">
+<style>
+  html, body, #map { height: 100%; margin: 0; padding: 0; }
+
+/*   .popup-container {
+    width: -moz-fit-content;
+    width: fit-content;
+    height: -moz-fit-content;
+    height: fit-content;
+
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+
+    padding: 0;
+    margin: 0;
+  
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+} */
+
+/* Ukrywa białe tło i cień głównego dymka */
+.clean-popup .leaflet-popup-content-wrapper {
+    background: transparent; /* Przezroczyste tło */
+    box-shadow: none;        /* Brak cienia */
+    border: none;            /* Brak obramowania */
+    padding: 0;              /* Usunięcie wewnętrznych marginesów */
+}
+
+/* Ukrywa trójkątną strzałkę pod dymkiem */
+.clean-popup .leaflet-popup-tip-container {
+    display: none;
+}
+
+/* Opcjonalnie: poprawia marginesy samej treści, aby przyciski były równo */
+.clean-popup .leaflet-popup-content {
+    margin: 0;
+    line-height: 0;
+}
+
+/* --- Kontener --- */
+.popup-container {
+    display: flex;           /* Układa przyciski w rzędzie */
+    justify-content: center; /* Wyśrodkowuje przyciski */
+    gap: 0;               /* Odstęp między przyciskami */
+    
+    /* "Niewidoczny" kontener */
+    background: transparent; 
+    border: none;
+    width: auto;             /* Dopasowanie do zawartości */
+}
+
+/* --- Bazowy styl przycisków --- */
+.popup-btn {
+    padding: 6px 12px;       /* Rozmiar przycisku */
+    border: none;            /* Bez obramowania */
+    border-radius: 4px;      /* Zaokrąglone rogi */
+    cursor: pointer;         /* Łapka po najechaniu */
+    font-size: 14px;
+    font-weight: 600;
+    color: white;            /* Biały tekst */
+    transition: background 0.3s; /* Płynna zmiana koloru */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* Lekki cień */
+}
+
+/* --- Przycisk Zapisz (Zielony/Niebieski) --- */
+.save-btn {
+    background-color: #28a745; /* Zielony */
+}
+
+.save-btn:hover {
+    background-color: #218838; /* Ciemniejszy zielony po najechaniu */
+}
+
+/* --- Przycisk Usuń (Czerwony) --- */
+.del-btn {
+    background-color: #dc3545; /* Czerwony */
+}
+
+.del-btn:hover {
+    background-color: #c82333; /* Ciemniejszy czerwony po najechaniu */
+}
+
+
+
+
+
+
+.city-search-control {
+    background: white;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+}
+
+/* Pole tekstowe */
+.city-search-input {
+    border: none;
+    outline: none;
+    padding: 0 10px;
+    height: 30px; /* Standardowa wysokość Leaflet */
+    font-size: 13px;
+    width: 150px; /* Szerokość pola */
+    border-radius: 4px 0 0 4px;
+}
+
+/* Przycisk lupy */
+.city-search-btn {
+    width: 30px;
+    height: 30px;
+    background: white;
+    border: none;
+    border-left: 1px solid #ccc; /* Oddzielenie od inputa */
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 0 4px 4px 0;
+}
+
+.city-search-btn:hover {
+    background-color: #f4f4f4;
+}
+
+</style>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+<link rel="stylesheet" href="map-style.css">
+<!-- WebChannel -->
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Leaflet do zaznaczania obszaru -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<!-- <script src="map.js" defer></script> -->
+
+
+</head>
+<body>
+
+<div id="map"></div>
+
+<script>
+const icons = {
+    PENCIL : 
+        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 7px;">
+            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+        </svg>`,
+    CROSS : 
+        `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-top: 5px;">
+            <path d="M18 6L6 18" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M6 6L18 18" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`,
+    SEARCH: `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+    `
+}
+var pyObj = null;
+
+// WebChannel connection
+new QWebChannel(qt.webChannelTransport, function(channel) {
+    pyObj = channel.objects.bridge;
+});
+
+var map = L.map('map').setView([51.505, -0.09], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap contributors"
+}).addTo(map);
+
+
+var drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+L.drawLocal.draw.handlers.rectangle.tooltip.start = 'Mark the area';
+ 
+
+var rectangleDrawer = new L.Draw.Rectangle(map, {
+    shapeOptions: {
+        color: '#3388ff',
+        weight: 2
+    },
+    edit: {
+        featureGroup: drawnItems,
+        remove: false,
+        edit: true
+    }
+}); 
+
+// PRZYCISK DO ZAZNACZANIA OBSZARU NA MIAPIE 
+var ToggleDrawControl = L.Control.extend({
+    options: { position: 'topleft' },
+    
+    onAdd: function(map) {
+        var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        
+        var button = L.DomUtil.create('a', 'draw-button', container);
+        button.href = '#';
+
+        const updateState = (isDrawing) => {
+            if (isDrawing) {
+                button.innerHTML = icons.CROSS;
+                button.title = 'Anuluj rysowanie';
+                L.DomUtil.addClass(button, 'draw-active');
+            } else {
+                button.innerHTML = icons.PENCIL;
+                button.title = 'Zaznacz obszar';
+                L.DomUtil.removeClass(button, 'draw-active');
+            }
+        };
+
+
+        button.title = 'Zaznacz obszar (Kliknij ponownie, aby anulować)';
+        button.setAttribute('role', 'button');
+
+        L.DomEvent.disableClickPropagation(button);
+
+        updateState(false);
+
+        L.DomEvent.on(button, 'click', function(e) {
+            L.DomEvent.stop(e);
+            
+            if (rectangleDrawer.enabled()) {
+                rectangleDrawer.disable();
+                map.closePopup();
+            } else {
+                drawnItems.clearLayers(); 
+                rectangleDrawer.enable();
+            }
+        });
+
+        map.on('draw:drawstart', () => updateState(true));
+        map.on('draw:drawstop',  () => updateState(false));
+
+        return container;
+    }
+});
+
+map.addControl(new ToggleDrawControl());
+
+
+
+map.on(L.Draw.Event.CREATED, function (e) {
+    var layer = e.layer;
+    drawnItems.clearLayers();
+    drawnItems.addLayer(layer);
+
+    var container = document.createElement('div');
+    container.className = "popup-container";
+    
+    var sendBtn = document.createElement('button');
+    sendBtn.className = "popup-btn save-btn"; 
+    sendBtn.innerHTML = "Save";
+    sendBtn.onclick = async function() {
+        map.closePopup();
+        sendSelectedArea(layer);
+    };
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = "popup-btn del-btn";
+    cancelBtn.innerHTML = "Delete";
+    cancelBtn.onclick = async function() {
+        drawnItems.removeLayer(layer);
+        map.closePopup();
+    };
+
+    container.appendChild(sendBtn);
+    container.appendChild(cancelBtn);
+
+    var bounds = layer.getBounds();
+    var bottomCenter = L.latLng(bounds.getSouth(), bounds.getCenter().lng);
+
+    L.popup({
+        closeButton: false,
+        autoClose: false,
+        closeOnClick: false,
+        offset: L.point(0, 55),
+        className: 'clean-popup'
+    })
+    .setLatLng(bottomCenter)
+    .setContent(container)
+    .openOn(map);
+});
+
+
+async function sendSelectedArea(layer) {
+    if (!pyObj) {
+        console.error("No connection");
+        return;
+    }
+
+    let bounds = layer.getBounds();
+
+    let geojson = {
+        "type": "Polygon",
+        "coordinates": [[
+            [bounds.getWest(), bounds.getSouth()],
+            [bounds.getEast(), bounds.getSouth()],
+            [bounds.getEast(), bounds.getNorth()],
+            [bounds.getWest(), bounds.getNorth()],
+            [bounds.getWest(), bounds.getSouth()]
+        ]]
+    };
+
+    await pyObj.receiveGeoJSON(JSON.stringify(geojson));
+    drawnItems.removeLayer(layer);
+}
+
+// WYSZUKIWANIE MIASTA 
+var CitySearchControl = L.Control.extend({
+    options: { position: 'topright' },
+
+    onAdd: function(map) {
+        var container = L.DomUtil.create('div', 'leaflet-bar city-search-control');
+        
+        var input = L.DomUtil.create('input', 'city-search-input', container);
+        input.type = 'text';
+        input.placeholder = 'Enter city name...';
+        
+        var button = L.DomUtil.create('button', 'city-search-btn', container);
+        button.innerHTML = icons.SEARCH;
+        button.title = "Search City";
+
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        
+        const sendCity = () => {
+            var cityName = input.value.trim();
+            if (cityName) {
+                console.log("Sending city:", cityName);
+                sendCityToApp(cityName);
+                input.value = '';
+            }
+        };
+
+        L.DomEvent.on(button, 'click', function(e) {
+            L.DomEvent.stop(e);
+            sendCity();
+        });
+
+        L.DomEvent.on(input, 'keydown', function(e) {
+            if (e.key === 'Enter') {
+                sendCity();
+            }
+        });
+
+        return container;
+    }
+});
+
+map.addControl(new CitySearchControl());
+
+
+async function sendCityToApp(cityName) {
+    if (!pyObj) {
+        console.error("No connection to Python backend");
+        return;
+    }
+
+    var data = {
+        "type": "CityRequest",
+        "cityName": cityName
+    };
+
+    
+    await pyObj.receiveGeoJSON(JSON.stringify(data));
+}
+
+
+function displayCoords(lat, lng) {
+    map.flyTo([lat, lng], 11, {
+        duration: 2
+    }); 
+}
+
+</script>
+
+</body>
+</html>

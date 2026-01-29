@@ -1,11 +1,11 @@
 import numpy as np
 import osmnx as ox
-from shapely import LineString
+from shapely import LineString, Polygon
 import geopandas as gpd
 import networkx as nx
 
 class GraphLoader():
-    def __init__(self, poland_crs = 2180, basic_crs = 4326):
+    def __init__(self, poland_crs : int = 2180, basic_crs : int = 4326):
         self.poland_crs = poland_crs
         self.basic_crs = basic_crs
 
@@ -35,6 +35,11 @@ class GraphLoader():
                 except Exception as e:
                     print(f"Error while searching for 'village': ({e})")
                     
+        return graph
+
+
+    def load_graph_from_polygon(self, area : Polygon):
+        graph = ox.graph_from_polygon(area, network_type="drive", simplify=False)
         return graph
     
 
@@ -198,9 +203,12 @@ class GraphLoader():
         return edges_info
     
 
-    def convert_to_gdf(self, edges : list[dict]) -> gpd.GeoDataFrame:
+    def convert_to_gdf(self, edges : list[dict], new_crs : int | None) -> gpd.GeoDataFrame:
         gdf_edges = gpd.GeoDataFrame(edges, crs=self.basic_crs)
-        gdf_edges["geometry"] = gdf_edges["geometry"].to_crs(epsg=self.poland_crs)
+        if new_crs is None:
+            new_crs = self.poland_crs
+
+        gdf_edges["geometry"] = gdf_edges["geometry"].to_crs(epsg=new_crs)
         return gdf_edges
     
 
@@ -211,21 +219,17 @@ class GraphLoader():
 
         for u, v, k, data in graph.edges(keys=True, data=True):
             name_attr = data.get("name")
-            
             match = False
             
             if isinstance(name_attr, list):
                 if street_name in name_attr:
                     match = True
-            
             elif name_attr == street_name:
                 match = True
                 
             if match:
                 selected_edges.append((u, v, k))
 
-        # tworzymy podgraf tylko z wybranymi krawędziami
         subgraph = graph.edge_subgraph(selected_edges).copy()
-        
         return subgraph
         

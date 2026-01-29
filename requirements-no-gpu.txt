@@ -90,3 +90,7 @@ Werkzeug==3.1.5
 wheel==0.45.1
 wrapt==2.0.1
 srtm.py
+PyQt6==6.10.1
+qasync==0.28.0
+Unidecode==1.4.0
+geopy==2.4.1

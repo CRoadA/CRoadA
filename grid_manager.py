@@ -49,11 +49,9 @@ class GridFileMetadata():
     third_dimension_size: int
     metadata_bytes: int
 
-
 GridType = TypeVar('GridType', bound=np.ndarray)
 
 SINGLE_CELL_SIZE = 4
-
 
 class GridManager(Generic[GridType]):
     _file_name: str

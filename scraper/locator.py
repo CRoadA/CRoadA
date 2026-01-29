@@ -1,0 +1,30 @@
+from shapely import Polygon
+from geopy.geocoders import Nominatim
+
+class Locator():
+    def __init__(self, user_agent : str = "CRoadA/1.0.0"):
+        self.geolocator = Nominatim(user_agent=user_agent)
+
+
+    def get_city_name(self, city : str | Polygon):
+        if isinstance(city, Polygon):
+            center_point = city.centroid
+
+            location = self.geolocator.reverse((center_point.y, center_point.x))
+
+            city_name = location.raw["address"].get("city", None)
+            # if city_name is None:
+            #     city_name = location.raw["address"].get("town", None)
+            return city_name
+        elif isinstance(city, str):
+            city_name = city.split(",")[0]
+            return city_name
+        
+        return None
+    
+    def get_city_coords(self, city: str):
+            location = self.geolocator.geocode(city, timeout=10)
+
+            if location:
+                return (location.latitude, location.longitude)
+            return None

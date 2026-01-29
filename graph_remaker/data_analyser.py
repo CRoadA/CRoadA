@@ -1,6 +1,6 @@
 from grid_manager import GridManager
 from trainer.model import OutputGrid
-from prediction_statistics import PredictionStatistics
+from graph_remaker.prediction_statistics import PredictionStatistics
 
 class DataAnalyser:
 

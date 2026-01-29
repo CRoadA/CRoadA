@@ -1,12 +1,16 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 import tensorflow as tf
+from typing import Any
+import numpy as np
 
 Sequence = tf.keras.utils.Sequence
 
 from grid_manager import GRID_INDICES, GridManager
 import trainer.batch_sequence as batch_sequence
 
+InputGrid = np.ndarray[(Any, Any, 3), np.float64]
+OutputGrid = np.ndarray[(Any, Any, 3), np.float64]
 
 class TRAINING_GRID_INDICES:
     IS_PREDICTED = 0

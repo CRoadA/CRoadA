@@ -1,18 +1,21 @@
 import os
 import pickle
 from scraper.geometry_processor import GeometryProcessor
-import osmnx as ox
-import geopandas as gpd
 from scraper.rasterizer import Rasterizer
 from scraper.graph_loader import GraphLoader
 import matplotlib.pyplot as plt
-from shapely import LineString
+from shapely import LineString, Polygon, Point
 import numpy as np
 import networkx as nx
 from shapely.ops import linemerge
 import math
 import pandas as pd
-import networkx as nx
+import geopandas as gpd
+import osmnx as ox
+
+from typing import Union
+from networkx import MultiDiGraph, MultiGraph
+from geopy.geocoders import Nominatim
 
 
 class GridBuilder():
@@ -56,15 +59,22 @@ class GridBuilder():
             return False
         
 
-    def get_city_grid(self, city_name : str) -> np.ndarray:
-        graph = self.loader.load_graph(city_name)
+    def get_city_grid(self, area : Union[str, Polygon]):
+        if isinstance(area, str):
+            graph = self.loader.load_graph(area)
+            new_crs = self.get_UTM_crs(graph)
+        elif isinstance(area, Polygon):
+            graph = self.loader.load_graph_from_polygon(area)
+            new_crs = self.get_UTM_crs(area)
+        else:
+            raise TypeError("Argument 'area' must be a city name of type str or a Polygon")
 
         for u, v, k, data in list(graph.edges(data=True, keys=True)):
             linestring = LineString([[graph.nodes[u]["x"], graph.nodes[u]["y"]], [graph.nodes[v]["x"], graph.nodes[v]["y"]]])
             data["geometry"] = linestring
         edges = self.loader.get_edges_measurements(graph)
 
-        gdf_edges = self.loader.convert_to_gdf(edges)
+        gdf_edges = self.loader.convert_to_gdf(edges, new_crs)
 
         gdf_edges["geometry"] = gdf_edges.apply(lambda row: self.geometry_processor.get_edge_polygon(row), axis=1)
 
@@ -73,8 +83,16 @@ class GridBuilder():
         return grid
     
 
-    def get_city_roads(self, city_name : str, residential_max_radius : float = 30.0, shortest_node_distance : float = 10.0) -> gpd.GeoDataFrame:
-        graph = self.loader.load_graph(city_name)
+    def get_city_roads(self, area : Union[str, Polygon], residential_max_radius : float = 30.0, shortest_node_distance : float = 10.0) -> gpd.GeoDataFrame:
+        global_crs = None
+        if isinstance(area, str):
+            graph = self.loader.load_graph(area)
+            # new_crs = self.get_UTM_crs(graph)
+        elif isinstance(area, Polygon):
+            graph = self.loader.load_graph_from_polygon(area)
+            global_crs = self.get_UTM_crs(area)
+        else:
+            raise TypeError("Argument 'area' must be a city name of type str or a Polygon")
 
         for u, v, k, data in list(graph.edges(data=True, keys=True)):
             linestring = LineString([[graph.nodes[u]["x"], graph.nodes[u]["y"]], [graph.nodes[v]["x"], graph.nodes[v]["y"]]])
@@ -88,11 +106,42 @@ class GridBuilder():
         G_final = ox.project_graph(G_projected, to_crs="EPSG:4326")
 
         edges = self.loader.get_edges_measurements(G_final, residential_max_radius)
-        gdf_edges = self.loader.convert_to_gdf(edges)
+
+        gdf_edges = self.loader.convert_to_gdf(edges, new_crs=global_crs)
+
 
         gdf_edges["geometry"] = gdf_edges.apply(lambda row: self.geometry_processor.get_edge_polygon(row), axis=1)
         return gdf_edges
+
+
+    def get_UTM_crs(self, area : Union[Polygon, MultiDiGraph, MultiGraph]) -> str:
+        if isinstance(area, MultiDiGraph | MultiGraph):
+            min_lon, min_lat, max_lon, max_lat  = area.bounds
+            center_point = Point([max_lon - min_lon, max_lat - min_lat])
+        elif isinstance(area, Polygon):
+            center_point = area.centroid
+        else:
+            raise TypeError("Argument 'area' must be a city graph type MultiDiGraph, MultiGraph or a Polygon")
+        lon, lat = center_point.x, center_point.y
+        zone = math.ceil((lon + 180)/6)
+        if lat >= 0:
+            epsg = 32600 + zone
+        else:
+            epsg = 32700 + zone
+
+        return epsg
     
+
+    def get_city_name(polygon):
+        center_point = polygon.centroid
+
+        geolocator = Nominatim(user_agent="CRoadA 1.0")
+        location = geolocator.reverse((center_point.y, center_point.x))
+
+        print(location.address)
+        print(location.raw["address"])
+        return location
+            
     
     def show_grid(self, grid : np.ndarray, city_name : str):
         plt.imshow(grid, cmap="gray")
