@@ -60,7 +60,7 @@ class Application(QApplication):
             self._ui_manager.display_error("Marked area is not a city.")
             return
             
-        file_name = f"{unidecode(city_name).lower().replace(" ", "_")}.dat"
+        file_name = unidecode(city_name).lower().replace(" ", "_") + ".dat"
         loop = asyncio.get_running_loop()
         try:
             self._input_grid_manager = await loop.run_in_executor(
@@ -116,7 +116,7 @@ class Application(QApplication):
         if self._input_grid_manager:
             self._ui_manager.display_status(None, "Predicting output for marked city...")
             time.sleep(2)
-            self._output_grid_manager = self._model.predict(self._input_grid_manager)
+            # self._output_grid_manager = self._model.predict(self._input_grid_manager)
             # pred_geo_json, stats = self._data_analyser.get_GeoJSON_and_statistics(self._output_grid_manager)
             # self._ui_manager.display_prediction(pred_geo_json, stats)
             self._ui_manager.display_status(None, "Koniec działania")

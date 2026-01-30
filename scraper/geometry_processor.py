@@ -102,7 +102,7 @@ class GeometryProcessor():
         for _, row in gdf_edges.iterrows():
             geometry = row["geometry"]
             if isinstance(geometry, Polygon) and geometry.covers(point):
-                print(f"Geometry processor - is_residential: {bool(row["is_residential"])}")
+                print(f"Geometry processor - is_residential: {bool(row['is_residential'])}")
                 return bool(row["is_residential"])
 
         return False
