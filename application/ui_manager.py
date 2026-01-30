@@ -13,15 +13,8 @@ from application.main_window import RESULTS_TYPE
 
 class UIManager:
 
-    def __init__(self, on_prediction_request: Callable[[dict], None], on_city_location: Callable[[dict], None]):
-        # self.on_prediction_request = on_prediction_request
-        # TODO
-        # 1. display map
-        # 2. display place for result
-        # 3. display "predict" button
-        # 4. invoke on_prediction_request when button pressed
-        # app = QApplication(sys.argv)
-        self.window = MainWindow(on_prediction_request, on_city_location)
+    def __init__(self, on_save_marked_city: Callable[[dict], None], on_city_location: Callable[[dict], None], on_handle_prediction: Callable[[None], None]):
+        self.window = MainWindow(on_save_marked_city, on_city_location, on_handle_prediction)
         
 
 

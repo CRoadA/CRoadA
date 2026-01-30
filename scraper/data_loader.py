@@ -38,7 +38,7 @@ class DataLoader():
         self.data_dir = data_dir
 
 
-    def load_city_grid(self, city: str | Polygon, file_name: str | None, on_progress : Callable[[float | None, str], None] | None = None) -> GridManager:
+    def load_city_grid(self, city: str | Polygon, file_name: str, on_progress : Callable[[float | None, str], None] | None = None) -> GridManager:
         """Load city grid to a given file.
         Args:
             city (str): String for identification of the city (OSM-like) or (Polygon): Polygon for the city area.
@@ -48,20 +48,9 @@ class DataLoader():
         Raises:
             FileExistsError: if file with specified name already exists.
             """
-        if on_progress:
-            on_progress(None, "Checking correctness of the marked area")
-
-        city_name = None
-        if file_name is None:
-            locator = Locator()
-            city_name = locator.get_city_name(city)
-            if city_name is None:
-                raise ValueError("Marked area is not a city.")
-            
-            file_name = f"{unidecode(city_name).lower().replace(" ", "_")}.dat"
 
         if os.path.exists(os.path.join(self.data_dir, file_name)):
-            raise FileExistsError(f"File: {file_name} already exists in {self.data_dir} directory", city_name)
+            raise FileExistsError(f"File: {file_name} already exists in {self.data_dir} directory")
         
         if on_progress:
             on_progress(None, "Getting roads data.")

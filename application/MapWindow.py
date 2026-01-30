@@ -24,9 +24,9 @@ class WebBridge(QObject):
 # -------- Main Window ---------
 
 class MapWindow(QWidget):
-    def __init__(self, on_prediction_request : Callable[[dict], None], on_city_location : Callable[[dict], None]):
+    def __init__(self, on_save_marked_city : Callable[[dict], None], on_city_location : Callable[[dict], None]):
         super().__init__()
-        self.on_prediction_request = on_prediction_request
+        self.on_save_marked_city = on_save_marked_city
         self.on_city_location = on_city_location
 
         # self.setWindowTitle("OpenStreetMap in PyQt + GeoJSON bbox")
@@ -57,9 +57,8 @@ class MapWindow(QWidget):
     async def _on_geojson(self, geojson):
         """Store and print received GeoJSON."""
         self.current_geojson = geojson
-        # print("Received GeoJSON:", json.dumps(geojson, indent=2))
         if geojson.get("type") == "Polygon":
-            asyncio.create_task(self.on_prediction_request(geojson))
+            asyncio.create_task(self.on_save_marked_city(geojson))
         if geojson.get("type") == "CityRequest":
             task = asyncio.create_task(self.on_city_location(geojson))
             coords = await task

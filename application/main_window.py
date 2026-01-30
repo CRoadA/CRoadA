@@ -2,6 +2,8 @@ from PyQt6.QtWidgets import (
     QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QWidget, QSplitter, QFrame, QSizePolicy, QScrollArea
 )
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from application.MapWindow import MapWindow
@@ -17,17 +19,18 @@ class RESULTS_TYPE(Enum):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, on_prediction_request: Callable[[dict], None], on_city_location: Callable[[dict], None], styles : str = "main.css"):
+    def __init__(self, on_save_marked_city: Callable[[dict], None], on_city_location: Callable[[dict], None], 
+                 on_handle_prediction: Callable[[None], None], styles : str = "main.css"):
         super().__init__()
         self.setWindowTitle("CRoadA - Urban Analysis")
         self.setMinimumSize(400,500)
         self.showMaximized()
         
-        self.initialize_widgets(on_prediction_request, on_city_location)
+        self.initialize_widgets(on_save_marked_city, on_city_location, on_handle_prediction)
         self.apply_styles(styles)
 
 
-    def initialize_widgets(self, on_prediction_request: Callable[[dict], None], on_city_location : Callable[[dict], None]):
+    def initialize_widgets(self, on_save_marked_city: Callable[[dict], None], on_city_location : Callable[[dict], None], on_handle_prediction: Callable[[None], None]):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
@@ -53,6 +56,9 @@ class MainWindow(QMainWindow):
         self.predict_btn = QPushButton("Predict")
         self.predict_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.predict_btn.setMinimumHeight(50)
+        self.predict_btn.setEnabled(False)
+        self.predict_btn.setProperty("class", "inactive")
+        self.predict_btn.clicked.connect(lambda : self.handle_prediction(on_handle_prediction))
 
         # Sekcja wyników
         results_frame = QFrame()
@@ -78,7 +84,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addStretch()
 
         # Mapa
-        self.map_widget = MapWindow(on_prediction_request, on_city_location)
+        self.map_widget = MapWindow(on_save_marked_city, on_city_location)
         self.map_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # splitter
@@ -107,3 +113,47 @@ class MainWindow(QMainWindow):
     def set_results(self, text : str, results_type : RESULTS_TYPE):
         self.results_header.setText(str(results_type.value).replace("(", "").replace(")", ""))  
         self.result_label.setText(text)
+
+
+    def prediction_button_activation(self, activate : bool):
+        self.predict_btn.setEnabled(activate)
+        if activate:
+            self.predict_btn.setProperty("class", "")
+        else:
+            self.predict_btn.setProperty("class", "inactive")
+
+        self.predict_btn.style().unpolish(self.predict_btn)
+        self.predict_btn.style().polish(self.predict_btn)
+
+
+    def handle_prediction(self, on_handle_prediction: Callable[[None], None]):
+        self.prediction_button_activation(False)
+
+        self.thread = QThread()
+        self.worker = AsynchronousTaskWrapper(on_handle_prediction)
+        self.worker.moveToThread(self.thread)
+
+        self.thread.started.connect(self.worker.run)
+    
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.thread.start()
+
+
+
+class AsynchronousTaskWrapper(QObject):
+    finished = pyqtSignal()
+    
+    def __init__(self, processing_function):
+        super().__init__()
+        self.processing_function = processing_function
+
+    def run(self):
+        try:
+            self.processing_function()
+        except Exception as e:
+            print(f"Błąd w wątku predykcji: {e}")
+        finally:
+            self.finished.emit()
