@@ -16,6 +16,10 @@ class TRAINING_GRID_INDICES:
     IS_PREDICTED = 0
     IS_STREET = GRID_INDICES.IS_STREET + 1
     ALTITUDE = GRID_INDICES.ALTITUDE + 1
+    IS_RESIDENTIAL = GRID_INDICES.IS_RESIDENTIAL + 1
+
+class PREDICT_GRID_INDICES(GRID_INDICES):
+    pass
 
 
 class Model(ABC):
@@ -85,6 +89,7 @@ class Model(ABC):
             for col in range(cols_number):
                 if result[row, col, TRAINING_GRID_INDICES.IS_PREDICTED] == 1:
                     result[row, col, TRAINING_GRID_INDICES.IS_STREET] = 0
+                    result[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL] = 0
 
         return result
 
@@ -111,6 +116,7 @@ class Model(ABC):
                 if input[row, col, TRAINING_GRID_INDICES.IS_PREDICTED] == 0:
                     result[row, col, GRID_INDICES.IS_STREET] = input[row, col, TRAINING_GRID_INDICES.IS_STREET]
                     result[row, col, GRID_INDICES.ALTITUDE] = input[row, col, TRAINING_GRID_INDICES.ALTITUDE]
+                    result[row, col, GRID_INDICES.IS_RESIDENTIAL] = input[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL]
 
         return result
     

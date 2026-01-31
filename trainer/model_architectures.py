@@ -1,8 +1,8 @@
 import tensorflow as tf
 
 # test model
-def base_clipping_model(clipping_size=512, clipping_surplus=64, third_dimension=4, **kwargs):
-    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension))
+def base_clipping_model(clipping_size=512, clipping_surplus=64, input_third_dimension=4, output_third_dimension=2, **kwargs):
+    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, input_third_dimension))
     x = tf.keras.layers.Conv2D(16, 5, activation="relu", padding="same", strides=1)(inputs)
     x = tf.keras.layers.Conv2D(8, 5, activation="relu", padding="same", strides=1)(x)
     x = tf.keras.layers.Conv2D(4, 5, activation="relu", padding="same", strides=1)(x)
@@ -11,20 +11,28 @@ def base_clipping_model(clipping_size=512, clipping_surplus=64, third_dimension=
     crop = clipping_surplus // 2
     x = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(x)
 
-    # One output layer with two channels
-    x = tf.keras.layers.Conv2D(2, 1, activation=None, name="output")(x)
+    # One output layer with multiple channels
+    x = tf.keras.layers.Conv2D(output_third_dimension, 1, activation=None, name="output")(x)
 
-    # Split outputs into two separate heads
+    # Split outputs into multiple separate heads
+    assert output_third_dimension in [1, 2, 3], "output_third_dimension needs to be one of values: [1, 2, 3]"
+
     out_is_street = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 0:1]), name="is_street", dtype="float32")(x)
+    if output_third_dimension >= 1:
+        outputs = [out_is_street]
     out_altitude = tf.keras.layers.Lambda(lambda t: t[..., 1:2], name="altitude", dtype="float32")(x)
-    outputs = [out_is_street, out_altitude]
+    if output_third_dimension >= 2:
+        outputs = [out_is_street, out_altitude]
+    out_is_residential = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 2:3]), name="is_residential", dtype="float32")(x)
+    if output_third_dimension >= 3:
+        outputs = [out_is_street, out_altitude, out_is_residential]
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
 # UNet architecture for clipping model proposed by ChatGPT
-def unet(clipping_size=512, clipping_surplus=64, third_dimension=4, **kwargs):
-    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension))
+def unet(clipping_size=512, clipping_surplus=64, input_third_dimension=4, output_third_dimension: int = 2, **kwargs):
+    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, input_third_dimension))
 
     # Encoder
     c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(inputs)
@@ -63,17 +71,24 @@ def unet(clipping_size=512, clipping_surplus=64, third_dimension=4, **kwargs):
     c6 = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(c6)
 
     # Output heads
-    street_out = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6)
-    altitude_out = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6)
+    assert output_third_dimension in [1, 2, 3], "output_third_dimension needs to be one of values: [1, 2, 3]"
 
-    model = tf.keras.Model(inputs, [street_out, altitude_out])
+    outputs = []
+    if output_third_dimension >= 1:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6))
+    if output_third_dimension >= 2:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6))
+    if output_third_dimension >= 3:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c6))    
+
+    model = tf.keras.Model(inputs, outputs)
     return model
 
-def alex_inspired(clipping_size=512, clipping_surplus=64, third_dimension=4, **kwargs):
+def alex_inspired(clipping_size=512, clipping_surplus=64, input_third_dimension=4, output_third_dimension=2, **kwargs):
     # AlexNet-inspired architecture for clipping model
 
     # Input layer
-    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension))
+    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, input_third_dimension))
 
     # Encoder
     c1 = tf.keras.layers.Conv2D(filters=96, kernel_size=11, strides=1, activation='relu', padding="same")(inputs)
@@ -106,17 +121,21 @@ def alex_inspired(clipping_size=512, clipping_surplus=64, third_dimension=4, **k
     c18 = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(c18)
 
     # Output heads
-    out_is_street = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c18)
-    out_altitude = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c18)
-    outputs = [out_is_street, out_altitude]
+    outputs = []
+    if output_third_dimension >= 1:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c18))
+    if output_third_dimension >= 2:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c18))
+    if output_third_dimension >= 3:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c18))
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
 
 # test model
-def test_clipping_model_shallowed_unet(clipping_size=512, clipping_surplus=64, third_dimension=4, **kwargs):
-    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, third_dimension))
+def test_clipping_model_shallowed_unet(clipping_size=512, clipping_surplus=64, input_third_dimension=4, output_third_dimension: int = 2, **kwargs):
+    inputs = tf.keras.layers.Input(shape=(clipping_size, clipping_size, input_third_dimension))
 
     # Encoder
     c1 = tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same')(inputs)
@@ -146,8 +165,13 @@ def test_clipping_model_shallowed_unet(clipping_size=512, clipping_surplus=64, t
     c6 = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(c6)
 
     # Output heads
-    street_out = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6)
-    altitude_out = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6)
+    outputs = []
+    if output_third_dimension >= 1:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6))
+    if output_third_dimension >= 2:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6))
+    if output_third_dimension >= 3:
+        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c6))
 
-    model = tf.keras.Model(inputs, [street_out, altitude_out])
+    model = tf.keras.Model(inputs, outputs)
     return model

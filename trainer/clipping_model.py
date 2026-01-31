@@ -31,7 +31,7 @@ clip_models = {
 }
 
 class ClippingModel(Model):
-    def __init__(self, model_type: ClipModels, clipping_size: int = 512, clipping_surplus: int = 64, path: str | None = None, **kwargs):
+    def __init__(self, model_type: ClipModels, clipping_size: int = 512, clipping_surplus: int = 64, input_third_dimension: int = 3, output_third_dimension: int = 2, weights: list[int] = [10, 0, 10], path: str | None = None, **kwargs):
         """
         Initializes the ClippingModel with specified clipping size and surplus.
         
@@ -45,23 +45,38 @@ class ClippingModel(Model):
         super().__init__(path)
         self._clipping_size = clipping_size
         self._clipping_surplus = clipping_surplus
+        self.input_third_dimension = input_third_dimension
+        self.output_third_dimension = output_third_dimension
 
         if not path is None and not os.path.isfile(path):
             # Model architecture here
-            self._keras_model = clip_models[model_type](clipping_size=self._clipping_size, clipping_surplus=self._clipping_surplus, third_dimension=THIRD_DIMENSION, **kwargs) # TODO - without IS_RESIDENTIAL (third dimension = 3)
+            self._keras_model = clip_models[model_type](clipping_size=self._clipping_size, clipping_surplus=self._clipping_surplus, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension, **kwargs) # TODO - without IS_RESIDENTIAL (third dimension = 3)
 
             # Compile the model
+            loss = {
+                "is_street": "binary_crossentropy"
+            }
+            loss_weights = {
+                "is_street": weights[0]
+            }
+            metrics = {
+                "is_street": ["accuracy"]
+            }
+
+            if input_third_dimension >= 2:
+                loss["altitude"] = "mse"
+                loss_weights["altitude"] = weights[1]
+                metrics["altitude"] = "mae"
+            if input_third_dimension >= 3:
+                loss["is_residential"] = "binary_crossentropy"
+                loss_weights["is_residential"] = weights[2]
+                metrics["is_residential"] = "accuracy"
+
             self._keras_model.compile(
                 optimizer="adam",
-                loss={
-                    "is_street": "binary_crossentropy",
-                    "altitude": "mse"
-                },
-                loss_weights={"is_street": 1.0, "altitude": 1.0},
-                metrics={
-                    "is_street": ["accuracy"],
-                    "altitude": ["mae"]
-                }
+                loss=loss,
+                loss_weights=loss_weights,
+                metrics=metrics
             )
         else:
             self._keras_model = tf.keras.models.load_model(path)
@@ -89,8 +104,8 @@ class ClippingModel(Model):
             Number of steps per epoch, by default 1000
         """
         # Create TensorFlow datasets for training and validation
-        train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size, third_dimension=THIRD_DIMENSION)
-        val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size, third_dimension=THIRD_DIMENSION)
+        train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension)
+        val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension)
         # Fit the model using the datasets
         self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1)
 

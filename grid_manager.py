@@ -14,11 +14,12 @@ import time
 class GRID_INDICES:
     IS_STREET = 0
     ALTITUDE = 1
+    IS_RESIDENTIAL = 2
 
 
 METADATA_SEPARATOR = ";"
 
-Grid = np.ndarray[(Any, Any, 2), Any]  # point on Grid (row, col, value_index)
+Grid = np.ndarray[(Any, Any, 3), Any]  # point on Grid (row, col, value_index)
 """Type of numpy array with points grid (row, col, value_index). Value_index should be taken from GRID_INDICES."""
 
 

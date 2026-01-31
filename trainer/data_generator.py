@@ -3,9 +3,9 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 
-from grid_manager import GridManager
+from grid_manager import Grid, GridManager, GRID_INDICES
 from trainer.cut_grid import cut_from_cut, cut_from_grid_segments
-from trainer.model import Model
+from trainer.model import TRAINING_GRID_INDICES, PREDICT_GRID_INDICES, Model
 
 InputGrid = np.ndarray[(Any, Any, 3), np.float32]
 """Like normal Grid, but with bools indicating, if it should be changed (the 0-th coordinate of the thrid dimension). If it is False, then the IS_STREET bool is treated as zero."""
@@ -13,25 +13,30 @@ InputGrid = np.ndarray[(Any, Any, 3), np.float32]
 OutputGrid = np.ndarray[(Any, Any, 3), np.float32]
 """Like normal grid, but next to IS_STREET and ALTITUDE, it contains also IS_RESIDENTIAL value."""
 
-def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, third_dimension: int = 3) -> tf.data.Dataset:
+def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, input_third_dimension: int = 3, output_third_dimension: int = 3) -> tf.data.Dataset:
     """Get TensorFlow dataset from clipping sample generator.
     Each sample is a tuple (input, output), where:
     - input is a numpy array of shape (clipping_size, clipping_size, 3) containing IS_STREET, ALTITUDE and IS_MODIFIABLE values,
     - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
     # Define output signature for the dataset - helps TensorFlow understand the shape and type of the data
+    assert input_third_dimension in [2, 3, 4], "input_third_dimension must be one of following values: [2, 3, 4]."
+    y_spec_dict = {
+        "is_street": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32)
+    }
+    if input_third_dimension >= 2:
+        y_spec_dict["altitude"] = tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32)
+    if input_third_dimension >= 3:
+        y_spec_dict["is_residential"] = tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32)
+
     output_signature = (
-        tf.TensorSpec(shape=(clipping_size, clipping_size, third_dimension), dtype=tf.float32),
-        {
-            "is_street": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
-            "altitude": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32),
-            # TODO - add IS_RESIDENTIAL when data is ready
-        },
+        tf.TensorSpec(shape=(clipping_size, clipping_size, input_third_dimension), dtype=tf.float32),
+        y_spec_dict
     )
 
     # Create dataset from generator
     dataset = tf.data.Dataset.from_generator(
-        lambda: clipping_sample_generator(files, cut_sizes, clipping_size, input_surplus),
+        lambda: clipping_sample_generator(files, cut_sizes, clipping_size, input_surplus, input_third_dimension, output_third_dimension),
         output_signature=output_signature,
     )
 
@@ -40,25 +45,27 @@ def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_
 
     return dataset
 
-def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int):
+def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, input_third_dimension: int, output_third_dimension: int):
     """Generates samples for clipping training.
     Yields tuples (input, output), where:
     - input is a numpy array of shape (clipping_size, clipping_size, 3) containing IS_STREET, ALTITUDE and IS_MODIFIABLE values,
     - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
+    assert input_third_dimension in [2, 3, 4], "input_third_dimension must be one of following values: [2, 3, 4]"
+    assert output_third_dimension in [1, 2, 3], "output_third_dimension must be one of following values: [1, 2, 3]"
     while True:
         # Select a random file and cut size
-        file = random.choice(files)
+        grid = random.choice(grid_managers)
         cut_size = random.choice(cut_sizes)
 
         # Get a random cut from the file
-        _, cut = generate_cut(file, cut_size)
+        _, cut = generate_cut(grid, cut_size)
 
         # Determine random clipping position within the cut grid
-        max_x = cut.shape[1] - clipping_size
-        max_y = cut.shape[0] - clipping_size
-        clipping_x = random.randint(0, max_x)
-        clipping_y = random.randint(0, max_y)
+        max_x = cut.shape[1] - clipping_size - (input_surplus / 2)
+        max_y = cut.shape[0] - clipping_size - (input_surplus / 2)
+        clipping_x = random.randint(input_surplus / 2, max_x)
+        clipping_y = random.randint(input_surplus / 2, max_y)
 
         # Create the clipping from the cut grid
         clipping = cut_from_cut(
@@ -67,17 +74,17 @@ def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]]
             clipping_y,
             (clipping_size, clipping_size),
             input_surplus,
-            clipping=True,
+            clipping=False # Otherwise we would use the indices of clippings and not coordinates -> we would end up taking mostly the bottom-right corner
         )
 
         # Prepare input and output for the model
 
         # Clean the clipping from IS_STREET data where IS_PREDICTED flag is on
-        clipping = Model.clean_input(clipping)
-        # without IS_RESIDENTIAL, but with IS_MODIFIABLE
-        x = clipping[:, :, 0:3].astype(np.float32) # Keras does not like float64
-        # Fill IS_MODIFIABLE channel with ones -> we want to use all data for training
-        x[:, :, 2] = 1
+        cleaned_clipping = Model.clean_input(clipping)
+        # without IS_RESIDENTIAL, but with IS_PREDICTED
+        x = cleaned_clipping[:, :, 0:input_third_dimension].astype(np.float32) # Keras does not like float64
+        # Fill IS_PREDICTED channel with ones -> we want to use all data for training
+        x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 1
 
         # Prepare the area which we expect the model to predict
         output_clipping = clipping[
@@ -87,16 +94,18 @@ def clipping_sample_generator(files: list[str], cut_sizes: list[tuple[int, int]]
         ]
 
         # Prepare output values
-        y_is_street = output_clipping[:, :, 0:1].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
-        y_altitude = output_clipping[:, :, 1:2].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
-        # TODO - add y_is_residential when data is ready
-
+        output = {
+            "is_street": output_clipping[:, :, [PREDICT_GRID_INDICES.IS_STREET]].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        }
+        if output_third_dimension >= 2:
+            output["altitude"] = output_clipping[:, :, [PREDICT_GRID_INDICES.ALTITUDE]].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        if output_third_dimension >= 3:
+            output["is_residential"] = output_clipping[:, :, [PREDICT_GRID_INDICES.IS_RESIDENTIAL]].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
         # Yield the input-output pair - TensorFlow will handle batching
-        yield x, {"is_street": y_is_street, "altitude": y_altitude}
+        yield x, output
 
-def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int], np.ndarray]:
+def generate_cut(grid_manager: GridManager[Grid], cut_size: tuple[int, int]) -> tuple[tuple[int, int], np.ndarray]:
     """Get the next random cut (part of a batch item) from the file (a batch item == multiple cuts)."""
-    grid_manager = GridManager(file)  # load grid manager
     grid_metadata = grid_manager.get_metadata()
     grid_rows, grid_cols = grid_metadata.rows_number, grid_metadata.columns_number
 
@@ -116,9 +125,17 @@ def generate_cut(file: str, cut_size: tuple[int, int]) -> tuple[tuple[int, int],
     # Create cut grid
     cut = cut_from_grid_segments(grid_manager, cut_start_x, cut_start_y, cut_size, surplus=0, clipping=False)
 
-    cut = np.copy(cut)
-    # Ensure the cut has the correct number of channels (including IS_MODIFIABLE channel)
-    cut = np.resize(cut, (cut_size[0], cut_size[1], cut.shape[2] + 1))
+    # append the IS_PREDICTED channel
+    result = np.zeros((cut_size[0], cut_size[1], cut.shape[2] + 1))
+    result[:, :, [
+        TRAINING_GRID_INDICES.IS_STREET,
+        TRAINING_GRID_INDICES.ALTITUDE,
+        TRAINING_GRID_INDICES.IS_RESIDENTIAL
+    ]] = cut[
+        GRID_INDICES.IS_STREET,
+        GRID_INDICES.ALTITUDE,
+        GRID_INDICES.IS_RESIDENTIAL
+    ]
 
     # Return the cut starting position and the cut grid manager
-    return ((cut_start_x, cut_start_y), cut)
+    return ((cut_start_x, cut_start_y), result)

@@ -189,17 +189,17 @@ def cut_from_cut(
 
     if clipping:
         # Calculate start point with surplus
-        cut_start_x = int(cut_start_x * (cut_size[0] - surplus) - (surplus / 2))
-        cut_start_y = int(cut_start_y * (cut_size[1] - surplus) - (surplus / 2))
+        cut_start_x = int(cut_start_x * (cut_size[1] - surplus) - (surplus / 2))
+        cut_start_y = int(cut_start_y * (cut_size[0] - surplus) - (surplus / 2))
     else:
         cut_start_x = int(cut_start_x - surplus/2)
         cut_start_y = int(cut_start_y - surplus/2)
-    cut_start_x = min(cut_start_x, cut_input.shape[1] - cut_size[0])
-    cut_start_y = min(cut_start_y, cut_input.shape[0] - cut_size[1])
+    cut_start_x = min(cut_start_x, cut_input.shape[1] - cut_size[1])
+    cut_start_y = min(cut_start_y, cut_input.shape[0] - cut_size[0])
     
     # Calculate end point
-    cut_end_x = min(cut_start_x + cut_size[0], cut_input.shape[1])
-    cut_end_y = min(cut_start_y + cut_size[1], cut_input.shape[0])
+    cut_end_x = min(cut_start_x + cut_size[1], cut_input.shape[1])
+    cut_end_y = min(cut_start_y + cut_size[0], cut_input.shape[0])
 
     # Cut the cut
     cut_output = cut_input[cut_start_y : cut_end_y, cut_start_x : cut_end_x]
