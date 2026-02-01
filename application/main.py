@@ -1,5 +1,5 @@
 from grid_manager import GridManager
-from trainer.model import InputGrid, OutputGrid, Model
+from trainer.model import InputGrid, PredictGrid, Model
 from application.ui_manager import UIManager
 from graph_remaker.data_analyser import DataAnalyser
 from scraper.data_loader import DataLoader
@@ -22,7 +22,7 @@ GRID_FOLDER = "app_grids"
 class Application(QApplication):
 
     _input_grid_manager: GridManager[InputGrid] | None
-    _output_grid_manager: GridManager[OutputGrid] | None
+    _output_grid_manager: GridManager[PredictGrid] | None
     _model: Model
     _data_loader : DataLoader
     _data_analyser: DataAnalyser

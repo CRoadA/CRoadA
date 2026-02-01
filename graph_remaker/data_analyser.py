@@ -1,5 +1,5 @@
 from grid_manager import GridManager
-from trainer.model import OutputGrid
+from trainer.model import PredictGrid
 from graph_remaker.prediction_statistics import PredictionStatistics
 
 class DataAnalyser:
@@ -7,7 +7,7 @@ class DataAnalyser:
     def __init__(self):
         pass
 
-    def get_GeoJSON_and_statistics(self, grid_manager: GridManager[OutputGrid]) -> tuple[dict, PredictionStatistics]:
+    def get_GeoJSON_and_statistics(self, grid_manager: GridManager[PredictGrid]) -> tuple[dict, PredictionStatistics]:
         """Retrieve GeoJSON and statistics of generated streets from Models OutputGrid.
 
         Parameters

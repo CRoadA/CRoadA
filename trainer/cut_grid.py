@@ -3,6 +3,7 @@ import os
 import numpy as np
 
 from grid_manager import GridManager, GridType
+from trainer.model import PredictGrid
 
 def cut_from_grid_segments(
     grid_manager: GridManager, cut_start_x: int, cut_start_y: int, cut_size: tuple[int, int], surplus: int = 0, clipping: bool = False
@@ -30,20 +31,20 @@ def cut_from_grid_segments(
     """
     # print(f"Requested cut at ({cut_start_x}, {cut_start_y}) of size {cut_size} with surplus {surplus}, clipping={clipping}")  # Debug print
     # Adjust surplus if it exceeds boundaries # TODO - Add padding if needed instead of reducing surplus
-    surplus = max(min(surplus, cut_start_x, cut_start_y, cut_size[0], cut_size[1]), 0)
+    surplus = max(min(surplus, cut_start_x, cut_start_y, cut_size[1], cut_size[0]), 0)
 
     # Load metadata
     metadata = grid_manager.get_metadata()
 
     if clipping:
         # Calculate start point with surplus
-        cut_start_x = int(cut_start_x * (cut_size[0] - surplus) - (surplus / 2))
-        cut_start_y = int(cut_start_y * (cut_size[1] - surplus) - (surplus / 2))
+        cut_start_x = int(cut_start_x * (cut_size[1] - surplus) - (surplus / 2))
+        cut_start_y = int(cut_start_y * (cut_size[0] - surplus) - (surplus / 2))
     else:
         cut_start_x = int(cut_start_x - surplus/2)
         cut_start_y = int(cut_start_y - surplus/2)
-    cut_start_x = min(cut_start_x, metadata.columns_number - cut_size[0])
-    cut_start_y = min(cut_start_y, metadata.rows_number - cut_size[1])
+    cut_start_x = min(cut_start_x, metadata.columns_number - cut_size[1])
+    cut_start_y = min(cut_start_y, metadata.rows_number - cut_size[0])
     
     # Calculate end point
     cut_end_x = min(cut_start_x + cut_size[0], metadata.columns_number)
@@ -91,16 +92,63 @@ def cut_from_grid_segments(
 
     return cut_x
 
+def write_clipping_to_grid_manager(
+        grid_manager: GridManager[PredictGrid],
+        clipping: np.ndarray,
+        clipping_start_x: int,
+        clipping_start_y: int
+        ) -> None:
+    
+    metadata = grid_manager.get_metadata()
+    segment_w, segment_h = metadata.segment_w, metadata.segment_h
+
+    clipping_h, clipping_w = clipping.shape
+
+    start_segment_row = clipping_start_y // segment_h
+    start_segment_column = clipping_start_x // segment_w
+
+    end_segment_row = clipping_start_y + clipping_h // segment_h
+    end_segment_column = clipping_start_x + clipping_w // segment_w
+
+    for segment_row in range(start_segment_row, end_segment_row + 1):
+        for segment_col in range(start_segment_column, end_segment_column + 1):
+            start_row = max(
+                segment_row * segment_h,
+                clipping_start_y
+            )
+            start_col = max(
+                segment_col * segment_w,
+                clipping_start_x
+            )
+
+            end_row = min(
+                (segment_row + 1) * segment_h,
+                clipping_start_y + clipping_h
+            )
+            end_col = min(
+                (segment_col + 1) * segment_w,
+                clipping_start_x + clipping_w
+            )
+            grid_manager.write_segment(
+                clipping[
+                    start_row - clipping_start_y : end_row - clipping_start_y,
+                    start_col - clipping_start_x : end_col - clipping_start_x,
+                ],
+                segment_row,
+                segment_col,
+            )
+    
+
 def write_cut_to_grid_segments(
     cut: np.ndarray,
     cut_size: tuple[int, int],
     segment_w: int,
     segment_h: int,
+    grid_density: int,
     cut_start_x: int,
     cut_start_y: int,
     from_file_path: str,
     to_directory: str,
-    grid_type: GridType,
 ) -> GridManager:
     """
     Write the cut grid into a new GridManager by segments.
@@ -119,8 +167,6 @@ def write_cut_to_grid_segments(
     :type cut_start_y: int
     :param from_file_path: File path where the cut grid comes from.
     :type from_file_path: str
-    :param grid_type: Type of the grid.
-    :type grid_type: GridType
     :return: A new GridManager instance containing the cut grid.
     :rtype: GridManager
     """
@@ -128,19 +174,20 @@ def write_cut_to_grid_segments(
     cut_segment_columns = math.ceil(cut_size[1] / segment_w)  # number of segments in cut horizontally
 
     # Check if the cut grid file already exists
-    file_path = os.path.join(to_directory, f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat")
+    file_name = f"{from_file_path}_cut_{cut_start_y}_{cut_start_x}_{cut_size[0]}_{cut_size[1]}.dat"
+    file_path = os.path.join(to_directory, file_name)
     cut_grid: GridManager = None
     
     if os.path.isfile(file_path):
-        cut_grid = GridManager(file_path)  # load grid manager
+        cut_grid = GridManager(file_name, data_dir=to_directory)  # load grid manager
     else:
-        cut_grid = GridManager[grid_type](
-            f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat",
+        cut_grid = GridManager(
+            file_name,
             cut_size[0],
             cut_size[1],
             0,
             0,
-            1,
+            grid_density,
             segment_h,
             segment_w,
             to_directory,

@@ -9,7 +9,7 @@ mixed_precision.set_global_policy("mixed_float16")
 
 Sequence = tf.keras.utils.Sequence
 
-from trainer.model import Model
+from trainer.model import Model, GRID_INDICES
 from grid_manager import GridManager
 from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
 from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
@@ -31,7 +31,7 @@ clip_models = {
 }
 
 class ClippingModel(Model):
-    def __init__(self, model_type: ClipModels, clipping_size: int = 512, clipping_surplus: int = 64, input_third_dimension: int = 3, output_third_dimension: int = 2, weights: list[int] = [10, 0, 10], path: str | None = None, **kwargs):
+    def __init__(self, model_type: ClipModels, clipping_size: int = 512, clipping_surplus: int = 64, input_third_dimension: int = 3, output_third_dimension: int = 2, weights: list[int] = [10, 1, 10], path: str | None = None, **kwargs):
         """
         Initializes the ClippingModel with specified clipping size and surplus.
         
@@ -48,7 +48,8 @@ class ClippingModel(Model):
         self.input_third_dimension = input_third_dimension
         self.output_third_dimension = output_third_dimension
 
-        if not path is None and not os.path.isfile(path):
+        files = [f for f in os.listdir(self._dir) if os.path.isfile(os.path.join(self._dir, f))]
+        if len(files) == 0: # if no model exists in the path
             # Model architecture here
             self._keras_model = clip_models[model_type](clipping_size=self._clipping_size, clipping_surplus=self._clipping_surplus, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension, **kwargs) # TODO - without IS_RESIDENTIAL (third dimension = 3)
 
@@ -79,7 +80,10 @@ class ClippingModel(Model):
                 metrics=metrics
             )
         else:
-            self._keras_model = tf.keras.models.load_model(path)
+            files.sort(key=lambda file: file.split("_")[0])
+            start_file = os.path.join(self._dir, files[-1])
+            print(f"Starting from file: {start_file}")
+            self._keras_model = tf.keras.models.load_model(start_file)
 
     def fit(self, train_files: list[str], val_files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, epochs: int = 1, steps_per_epoch: int = 1000):
         """Fit model to the given data.
@@ -109,36 +113,133 @@ class ClippingModel(Model):
         # Fit the model using the datasets
         self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1)
 
-    def predict(self, input: GridManager[InputGrid]) -> list[GridManager[OutputGrid]]:
-        """Predicts grid for given input.
-
-        Parameters
-        ----------
-        input : GridManager[InputGrid]
-            Input grid manager with input grids.
-
-        Returns
-        -------
-        list[GridManager[OutputGrid]]
-            Predicted output grids.
-        """
-        output_grids = []
-        predict_sequence = PredictClippingSequence(
-            model=self,
-            grid_manager=input,
-            clipping_size=self._clipping_size,
-            input_grid_surplus=self.get_input_grid_surplus(),
+    def predict(self, input: GridManager[InputGrid]) -> GridManager[OutputGrid]:
+        
+        input_metadata = input.get_metadata()
+        result_filename = f"from_{os.path.splitext(os.path.basename(input._file_name))[0]}__lat_{format(input_metadata.upper_left_latitude, ".4f").replace(".", "_")}__lon_{format(input_metadata.upper_left_longitude, ".4f").replace(".", "_")}__dim_{input_metadata.rows_number}x{input_metadata.columns_number}"
+        result = GridManager(
+            result_filename,
+            input_metadata.rows_number - self._clipping_surplus,
+            input_metadata.columns_number - self._clipping_surplus,
+            0,0,
+            input_metadata.grid_density,
+            input_metadata.segment_h,
+            input_metadata.segment_w,
+            os.path.join("tmp", "predictions"),
+            self.output_third_dimension
         )
-        for i in range(len(predict_sequence)):
-            prediction = predict_sequence[i]
-            # TODO - Combine predictions into a full grid manager?
-            prediction_grid = write_cut_to_grid_segments(
-                prediction, self._clipping_size, self._clipping_size, self._clipping_size,
-                i * self._clipping_size, i * self._clipping_size, input._file_name, "./tmp/predictions/"
-            )  # TODO - check if the name is sufficient
-            output_grids.append(prediction_grid)
+        result_metadata = result.get_metadata()
+        result_h, result_w = result_metadata.rows_number, result_metadata.columns_number
 
-        return output_grids  # This should be combined into a single GridManager
+        left_neighbor = None
+        output_clipping_size = self._clipping_size - self._clipping_surplus
+
+        top_neighbors = np.zeros((output_clipping_size, 3 * output_clipping_size))
+        for row in range(0, result_h, output_clipping_size):
+
+            # last row case handling
+            row = min(row, result_h - output_clipping_size)
+
+            if row > 0:
+                top_neighbors[:, output_clipping_size:] = result.read_arbitrary_fragment(row - output_clipping_size, 0, output_clipping_size, 2 * output_clipping_size)
+
+            for col in range(0, result_w, output_clipping_size):
+
+                # last col case handling
+                col = min(col, result_w - output_clipping_size)
+
+                input_clipping = np.ones(self._clipping_size, self._clipping_size, self.input_third_dimension)
+                input_clipping[:, :, 1:self.input_third_dimension] = input.read_arbitrary_fragment(
+                    row,
+                    col,
+                    self._clipping_size,
+                    self._clipping_size
+                )[:self.input_third_dimension-1]
+                
+                # Take already pedicted values
+                if row > 0:
+                    if col > 0:
+                        input_clipping[
+                            :self._clipping_surplus,
+                            :,
+                            1:self.output_third_dimension + 1
+                        ] = top_neighbors[
+                            :self._clipping_surplus,
+                            output_clipping_size - self._clipping_surplus : 2*output_clipping_size + self._clipping_surplus,
+                            :
+                        ]
+                    else:
+                        input_clipping[
+                            :self._clipping_surplus,
+                            self._clipping_surplus:,
+                            1:self.output_third_dimension + 1
+                        ] = top_neighbors[
+                            :self._clipping_surplus,
+                            output_clipping_size : 2*output_clipping_size + self._clipping_surplus,
+                            :
+                        ]
+
+                if col > 0:
+                    input_clipping[:, :self._clipping_surplus, 1:self.output_third_dimension + 1] = left_neighbor[:, -self._clipping_surplus:, :]
+
+                # Clean input
+                x = Model.clean_input(input_clipping[0: self.input_third_dimension])
+                #Predict
+                output_clipping = self._model._keras_model.predict(tf.expand_dims(x, axis=0))
+                result.write_arbitrary_fragment(output_clipping, row, col)
+
+                # Update neighbors
+                left_neighbor = output_clipping
+                if row > 0:
+                    top_neighbors[
+                        :,
+                        :2*output_clipping_size,
+                        :
+                    ] = top_neighbors[
+                        :,
+                        output_clipping_size:,
+                        :
+                    ]
+                    top_neighbors[
+                        :,
+                        2*output_clipping_size,
+                        :
+                    ] = result.read_arbitrary_fragment(row - output_clipping_size, col + 2*output_clipping_size, output_clipping_size, output_clipping_size)
+
+        return result
+
+
+
+    # def predict(self, input: GridManager[InputGrid]) -> list[GridManager[OutputGrid]]:
+    #     """Predicts grid for given input.
+
+    #     Parameters
+    #     ----------
+    #     input : GridManager[InputGrid]
+    #         Input grid manager with input grids.
+
+    #     Returns
+    #     -------
+    #     list[GridManager[OutputGrid]]
+    #         Predicted output grids.
+    #     """
+    #     output_grids = []
+    #     predict_sequence = PredictClippingSequence(
+    #         model=self,
+    #         grid_manager=input,
+    #         clipping_size=self._clipping_size,
+    #         input_grid_surplus=self.get_input_grid_surplus(),
+    #     )
+    #     for i in range(len(predict_sequence)):
+    #         prediction = predict_sequence[i]
+    #         # TODO - Combine predictions into a full grid manager?
+    #         prediction_grid = write_cut_to_grid_segments(
+    #             prediction, self._clipping_size, self._clipping_size, self._clipping_size,
+    #             i * self._clipping_size, i * self._clipping_size, input._file_name, "./tmp/predictions/"
+    #         )  # TODO - check if the name is sufficient
+    #         output_grids.append(prediction_grid)
+
+    #     return output_grids  # This should be combined into a single GridManager
 
     def get_input_grid_surplus(self) -> int:
         """Get the surplus size of input grid compared to output grid.

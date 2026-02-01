@@ -112,6 +112,98 @@ class GridManager(Generic[GridType]):
         else:
             raise ValueError(f"Unsupported file version {self._metadata.version}")
 
+    def read_arbitrary_fragment(self, row: int, col: int, height: int, width: int) -> GridType:
+
+        assert row + height < self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
+        assert col + width < self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
+        
+        metadata = self._metadata
+        segment_h, segment_w = metadata.segment_h, metadata.segment_w
+
+        start_segment_row = row // segment_h
+        start_segment_column = col // segment_w
+        end_segment_row = row + height // segment_h
+        end_segment_column = col + width // segment_w
+
+        result = np.zeros((height, width))
+
+        for segment_row in range(start_segment_row, end_segment_row + 1):
+            for segment_col in range(start_segment_column, end_segment_column + 1):
+                start_row = max(
+                    segment_row * segment_h,
+                    row
+                )
+                start_col = max(
+                    segment_col * segment_w,
+                    col
+                )
+
+                end_row = min(
+                    (segment_row + 1) * segment_h,
+                    row + height
+                )
+                end_col = min(
+                    (segment_col + 1) * segment_w,
+                    col + width
+                )
+                segment = self.read_segment(segment_row, segment_col)
+                result[
+                    start_row - row : end_row - row,
+                        start_col - col : end_col - col
+                ] = segment[
+                    start_row - segment_row * segment_h : end_row - segment_row * segment_h,
+                        start_col - segment_col * segment_w : end_col - segment_col * segment_w,
+                ]
+
+        return result
+        
+    def write_arbitrary_fragment(self, fragment: GridType, row: int, col: int) -> GridType:
+        
+        height, width = fragment.shape
+        assert row + height < self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
+        assert col + width < self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
+
+        metadata = self._metadata
+        segment_h, segment_w = metadata.segment_h, metadata.segment_w
+
+        start_segment_row = row // segment_h
+        start_segment_column = col // segment_w
+        end_segment_row = row + height // segment_h
+        end_segment_column = col + width // segment_w
+
+        for segment_row in range(start_segment_row, end_segment_row + 1):
+            for segment_col in range(start_segment_column, end_segment_column + 1):
+                start_row = max(
+                    segment_row * segment_h,
+                    row
+                )
+                start_col = max(
+                    segment_col * segment_w,
+                    col
+                )
+
+                end_row = min(
+                    (segment_row + 1) * segment_h,
+                    row + height
+                )
+                end_col = min(
+                    (segment_col + 1) * segment_w,
+                    col + width
+                )
+                segment = self.read_segment(segment_row, segment_col)
+                segment[
+                    start_row - segment_row * segment_h : end_row - segment_row * segment_h,
+                        start_col - segment_col * segment_w : end_col - segment_col * segment_w,
+                ] = fragment[
+                        start_row - row : end_row - row,
+                        start_col - col : end_col - col,
+                    ]
+                self.write_segment(
+                    segment,
+                    segment_row,
+                    segment_col,
+                )
+
     def _read_metadata(self) -> GridFileMetadata:
         """Read grid file metadata.
         Args:

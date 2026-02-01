@@ -3,14 +3,15 @@ from enum import Enum
 import tensorflow as tf
 from typing import Any
 import numpy as np
+import os
 
 Sequence = tf.keras.utils.Sequence
 
 from grid_manager import GRID_INDICES, GridManager
 import trainer.batch_sequence as batch_sequence
 
-InputGrid = np.ndarray[(Any, Any, 3), np.float64]
-OutputGrid = np.ndarray[(Any, Any, 3), np.float64]
+InputGrid = np.ndarray[(Any, Any, 4), np.float64]
+PredictGrid = np.ndarray[(Any, Any, 3), np.float64]
 
 class TRAINING_GRID_INDICES:
     IS_PREDICTED = 0
@@ -29,6 +30,7 @@ class Model(ABC):
         else:
             self._dir = "./models/created_at_" + str(tf.timestamp())
         
+        os.makedirs(self._dir, exist_ok=True)
 
     def predict(self, input: GridManager[batch_sequence.InputGrid]) -> GridManager[batch_sequence.OutputGrid]:
         """Predicts grid for given input.
