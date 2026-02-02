@@ -13,7 +13,7 @@ InputGrid = np.ndarray[(Any, Any, 3), np.float32]
 OutputGrid = np.ndarray[(Any, Any, 3), np.float32]
 """Like normal grid, but next to IS_STREET and ALTITUDE, it contains also IS_RESIDENTIAL value."""
 
-def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, input_third_dimension: int = 3, output_third_dimension: int = 3) -> tf.data.Dataset:
+def get_tf_dataset(files: list[GridManager[Grid]], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, input_third_dimension: int = 3, output_third_dimension: int = 3) -> tf.data.Dataset:
     """Get TensorFlow dataset from clipping sample generator.
     Each sample is a tuple (input, output), where:
     - input is a numpy array of shape (clipping_size, clipping_size, 3) containing IS_STREET, ALTITUDE and IS_MODIFIABLE values,
@@ -24,9 +24,9 @@ def get_tf_dataset(files: list[str], cut_sizes: list[tuple[int, int]], clipping_
     y_spec_dict = {
         "is_street": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32)
     }
-    if input_third_dimension >= 2:
+    if output_third_dimension >= 2:
         y_spec_dict["altitude"] = tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32)
-    if input_third_dimension >= 3:
+    if output_third_dimension >= 3:
         y_spec_dict["is_residential"] = tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32)
 
     output_signature = (
@@ -61,11 +61,14 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         # Get a random cut from the file
         _, cut = generate_cut(grid, cut_size)
 
+        surplus_border = int(input_surplus / 2)
+
         # Determine random clipping position within the cut grid
-        max_x = cut.shape[1] - clipping_size - (input_surplus / 2)
-        max_y = cut.shape[0] - clipping_size - (input_surplus / 2)
-        clipping_x = random.randint(input_surplus / 2, max_x)
-        clipping_y = random.randint(input_surplus / 2, max_y)
+        max_x = cut.shape[1] - clipping_size + surplus_border # + (input_surplus / 2), because cut_from_cutsubtracts clipping surplus
+        max_y = cut.shape[0] - clipping_size + surplus_border
+
+        clipping_x = random.randint(surplus_border, max_x)
+        clipping_y = random.randint(surplus_border, max_y)
 
         # Create the clipping from the cut grid
         clipping = cut_from_cut(
@@ -82,7 +85,12 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         # Clean the clipping from IS_STREET data where IS_PREDICTED flag is on
         cleaned_clipping = Model.clean_input(clipping)
         # without IS_RESIDENTIAL, but with IS_PREDICTED
-        x = cleaned_clipping[:, :, 0:input_third_dimension].astype(np.float32) # Keras does not like float64
+        x = np.zeros((cleaned_clipping.shape[0], cleaned_clipping.shape[1], input_third_dimension), dtype=np.float32)
+        x[
+            :,
+            :,
+            1:input_third_dimension
+        ] = cleaned_clipping[:, :, 0:(input_third_dimension - 1)].astype(np.float32) # Keras does not like float64
         # Fill IS_PREDICTED channel with ones -> we want to use all data for training
         x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 1
 
@@ -90,7 +98,7 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         output_clipping = clipping[
             int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
             int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
-            :,
+            :output_third_dimension, # already without IS_PREDICTED
         ]
 
         # Prepare output values
@@ -126,16 +134,16 @@ def generate_cut(grid_manager: GridManager[Grid], cut_size: tuple[int, int]) -> 
     cut = cut_from_grid_segments(grid_manager, cut_start_x, cut_start_y, cut_size, surplus=0, clipping=False)
 
     # append the IS_PREDICTED channel
-    result = np.zeros((cut_size[0], cut_size[1], cut.shape[2] + 1))
+    result = np.zeros((cut_size[0], cut_size[1], cut.shape[2] + 1), dtype=np.float32)
     result[:, :, [
         TRAINING_GRID_INDICES.IS_STREET,
         TRAINING_GRID_INDICES.ALTITUDE,
         TRAINING_GRID_INDICES.IS_RESIDENTIAL
-    ]] = cut[
+    ]] = cut[:, :, [
         GRID_INDICES.IS_STREET,
         GRID_INDICES.ALTITUDE,
         GRID_INDICES.IS_RESIDENTIAL
-    ]
+    ]]
 
     # Return the cut starting position and the cut grid manager
     return ((cut_start_x, cut_start_y), result)

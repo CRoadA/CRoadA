@@ -10,7 +10,7 @@ mixed_precision.set_global_policy("mixed_float16")
 Sequence = tf.keras.utils.Sequence
 
 from trainer.model import Model, GRID_INDICES
-from grid_manager import GridManager
+from grid_manager import Grid, GridManager
 from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
 from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
 from trainer.model_architectures import *
@@ -64,11 +64,11 @@ class ClippingModel(Model):
                 "is_street": ["accuracy"]
             }
 
-            if input_third_dimension >= 2:
+            if output_third_dimension >= 2:
                 loss["altitude"] = "mse"
                 loss_weights["altitude"] = weights[1]
                 metrics["altitude"] = "mae"
-            if input_third_dimension >= 3:
+            if output_third_dimension >= 3:
                 loss["is_residential"] = "binary_crossentropy"
                 loss_weights["is_residential"] = weights[2]
                 metrics["is_residential"] = "accuracy"
@@ -85,7 +85,7 @@ class ClippingModel(Model):
             print(f"Starting from file: {start_file}")
             self._keras_model = tf.keras.models.load_model(start_file)
 
-    def fit(self, train_files: list[str], val_files: list[str], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, epochs: int = 1, steps_per_epoch: int = 1000):
+    def fit(self, train_files: list[GridManager[Grid]], val_files: list[GridManager[Grid]], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, epochs: int = 1, steps_per_epoch: int = 1000):
         """Fit model to the given data.
 
         Parameters
@@ -109,6 +109,7 @@ class ClippingModel(Model):
         """
         # Create TensorFlow datasets for training and validation
         train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension)
+
         val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension)
         # Fit the model using the datasets
         self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1)
