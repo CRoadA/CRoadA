@@ -114,18 +114,18 @@ class GridManager(Generic[GridType]):
 
     def read_arbitrary_fragment(self, row: int, col: int, height: int, width: int) -> GridType:
 
-        assert row + height < self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
-        assert col + width < self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
+        assert row + height <= self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
+        assert col + width <= self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
         
         metadata = self._metadata
         segment_h, segment_w = metadata.segment_h, metadata.segment_w
 
         start_segment_row = row // segment_h
         start_segment_column = col // segment_w
-        end_segment_row = row + height // segment_h
-        end_segment_column = col + width // segment_w
+        end_segment_row = (row + height) // segment_h
+        end_segment_column = (col + width) // segment_w
 
-        result = np.zeros((height, width))
+        result = np.zeros((height, width, metadata.third_dimension_size))
 
         for segment_row in range(start_segment_row, end_segment_row + 1):
             for segment_col in range(start_segment_column, end_segment_column + 1):
@@ -157,11 +157,13 @@ class GridManager(Generic[GridType]):
 
         return result
         
-    def write_arbitrary_fragment(self, fragment: GridType, row: int, col: int) -> GridType:
+    def write_arbitrary_fragment(self, fragment: GridType, row: int, col: int) -> None:
         
-        height, width = fragment.shape
-        assert row + height < self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
-        assert col + width < self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
+        height, width = fragment.shape[0], fragment.shape[1]
+        assert row + height <= self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
+        assert col + width <= self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
+
+        print(f"DEBUG: got arbitrary fragment write: row: {row}, col: {col}, fragment.shape: {fragment.shape}")
 
         metadata = self._metadata
         segment_h, segment_w = metadata.segment_h, metadata.segment_w
@@ -191,6 +193,10 @@ class GridManager(Generic[GridType]):
                     col + width
                 )
                 segment = self.read_segment(segment_row, segment_col)
+                print(f"start_row: {start_row}")
+                print(f"segment_row * segment_h: {segment_row * segment_h}")
+                print(f"end_row: {end_row}")
+                print(f"end_row - start_row: {end_row - start_row}")
                 segment[
                     start_row - segment_row * segment_h : end_row - segment_row * segment_h,
                         start_col - segment_col * segment_w : end_col - segment_col * segment_w,

@@ -149,13 +149,13 @@ class ClippingModel(Model):
                 # last col case handling
                 col = min(col, result_w - output_clipping_size)
 
-                input_clipping = np.ones(self._clipping_size, self._clipping_size, self.input_third_dimension)
+                input_clipping = np.ones((self._clipping_size, self._clipping_size, self.input_third_dimension))
                 input_clipping[:, :, 1:self.input_third_dimension] = input.read_arbitrary_fragment(
                     row,
                     col,
                     self._clipping_size,
                     self._clipping_size
-                )[:self.input_third_dimension-1]
+                )[:, :, :self.input_third_dimension-1]
                 
                 # Take already pedicted values
                 if row > 0:
@@ -181,12 +181,17 @@ class ClippingModel(Model):
                         ]
 
                 if col > 0:
-                    input_clipping[:, :self._clipping_surplus, 1:self.output_third_dimension + 1] = left_neighbor[:, -self._clipping_surplus:, :]
+                    print(f"DEBUG: left_neighbor: {left_neighbor.shape}")
+                    print(f"DEBUG: input_clipping: {input_clipping.shape}")
+                    print(f"DEBUG: self._clipping_surplus: {self._clipping_surplus}")
+                    input_clipping[:-self._clipping_surplus, :self._clipping_surplus, 1:self.output_third_dimension + 1] = left_neighbor[:, -self._clipping_surplus:, :]
 
                 # Clean input
-                x = Model.clean_input(input_clipping[0: self.input_third_dimension])
+                x = Model.clean_input(input_clipping[:, :, 0: self.input_third_dimension], self.input_third_dimension)
                 #Predict
-                output_clipping = self._model._keras_model.predict(tf.expand_dims(x, axis=0))
+                # output_clipping = self._keras_model.predict(tf.expand_dims(x, axis=0))
+                output_clipping = self._keras_model(tf.expand_dims(x, axis=0))[0][0]
+                print(f"output_clipping.shape: {output_clipping.shape}")
                 result.write_arbitrary_fragment(output_clipping, row, col)
 
                 # Update neighbors

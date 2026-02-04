@@ -71,7 +71,7 @@ class Model(ABC):
         raise NotImplementedError()
 
     @staticmethod
-    def clean_input(input: batch_sequence.InputGrid) -> batch_sequence.InputGrid:
+    def clean_input(input: batch_sequence.InputGrid, input_third_dimension: int) -> batch_sequence.InputGrid:
         """Cleans input grid from IS_STREET data, where IS_PREDICTED flag is on.
 
         Parameters
@@ -91,13 +91,13 @@ class Model(ABC):
             for col in range(cols_number):
                 if result[row, col, TRAINING_GRID_INDICES.IS_PREDICTED] == 1:
                     result[row, col, TRAINING_GRID_INDICES.IS_STREET] = 0
-                    result[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL] = 0
+                    if input_third_dimension >= 4:
+                        result[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL] = 0
 
         return result
 
     def _clean_output(
-        self, input: batch_sequence.InputGrid, output: batch_sequence.OutputGrid
-    ) -> batch_sequence.OutputGrid:
+        self, input: batch_sequence.InputGrid, output: batch_sequence.OutputGrid, output_third_dimension: int    ) -> batch_sequence.OutputGrid:
         """Cleans output grid from modifications, where IS_PREDICTED flag is off.
 
         Parameters
@@ -117,8 +117,10 @@ class Model(ABC):
             for col in range(cols_number):
                 if input[row, col, TRAINING_GRID_INDICES.IS_PREDICTED] == 0:
                     result[row, col, GRID_INDICES.IS_STREET] = input[row, col, TRAINING_GRID_INDICES.IS_STREET]
-                    result[row, col, GRID_INDICES.ALTITUDE] = input[row, col, TRAINING_GRID_INDICES.ALTITUDE]
-                    result[row, col, GRID_INDICES.IS_RESIDENTIAL] = input[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL]
+                    if output_third_dimension >= 2:
+                        result[row, col, GRID_INDICES.ALTITUDE] = input[row, col, TRAINING_GRID_INDICES.ALTITUDE]
+                    if output_third_dimension >= 3:
+                        result[row, col, GRID_INDICES.IS_RESIDENTIAL] = input[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL]
 
         return result
     
