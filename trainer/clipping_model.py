@@ -132,17 +132,37 @@ class ClippingModel(Model):
         result_metadata = result.get_metadata()
         result_h, result_w = result_metadata.rows_number, result_metadata.columns_number
 
-        left_neighbor = None
         output_clipping_size = self._clipping_size - self._clipping_surplus
 
-        top_neighbors = np.zeros((output_clipping_size, 3 * output_clipping_size))
+        top_neighbors = np.zeros((self._clipping_surplus // 2, output_clipping_size + self._clipping_surplus, self.input_third_dimension))
         for row in range(0, result_h, output_clipping_size):
+            print(f"\nrow: {row // output_clipping_size}", end="")
 
             # last row case handling
             row = min(row, result_h - output_clipping_size)
 
+            # Prepare top neighbors
+            top_neighbors[:, :, :] = input.read_arbitrary_fragment(
+                row, 0, # no neeed to shift anyhow, because input is already shifted by clipping_surplus in the upper direction
+                self._clipping_surplus // 2,
+                output_clipping_size + self._clipping_surplus
+            )# [:, :, :]
+
             if row > 0:
-                top_neighbors[:, output_clipping_size:] = result.read_arbitrary_fragment(row - output_clipping_size, 0, output_clipping_size, 2 * output_clipping_size)
+                already_predicted_context_height = min(
+                    self._clipping_surplus // 2,
+                    row
+                ) # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
+                top_neighbors[
+                    -already_predicted_context_height:,
+                    :,
+                    1:self.output_third_dimension + 1
+                ] = result.read_arbitrary_fragment(
+                    row - already_predicted_context_height,
+                    0,
+                    already_predicted_context_height,
+                    output_clipping_size + self._clipping_surplus
+                )# [:, :, :]
 
             for col in range(0, result_w, output_clipping_size):
 
@@ -150,69 +170,60 @@ class ClippingModel(Model):
                 col = min(col, result_w - output_clipping_size)
 
                 input_clipping = np.ones((self._clipping_size, self._clipping_size, self.input_third_dimension))
-                input_clipping[:, :, 1:self.input_third_dimension] = input.read_arbitrary_fragment(
+                input_clipping[:, :, :] = input.read_arbitrary_fragment(
                     row,
                     col,
                     self._clipping_size,
                     self._clipping_size
-                )[:, :, :self.input_third_dimension-1]
-                
-                # Take already pedicted values
-                if row > 0:
-                    if col > 0:
-                        input_clipping[
-                            :self._clipping_surplus,
-                            :,
-                            1:self.output_third_dimension + 1
-                        ] = top_neighbors[
-                            :self._clipping_surplus,
-                            output_clipping_size - self._clipping_surplus : 2*output_clipping_size + self._clipping_surplus,
-                            :
-                        ]
-                    else:
-                        input_clipping[
-                            :self._clipping_surplus,
-                            self._clipping_surplus:,
-                            1:self.output_third_dimension + 1
-                        ] = top_neighbors[
-                            :self._clipping_surplus,
-                            output_clipping_size : 2*output_clipping_size + self._clipping_surplus,
-                            :
-                        ]
+                )[:, :, :]
 
+                # Take already predicted values
+                # Left Neighbor
                 if col > 0:
-                    print(f"DEBUG: left_neighbor: {left_neighbor.shape}")
-                    print(f"DEBUG: input_clipping: {input_clipping.shape}")
-                    print(f"DEBUG: self._clipping_surplus: {self._clipping_surplus}")
-                    input_clipping[:-self._clipping_surplus, :self._clipping_surplus, 1:self.output_third_dimension + 1] = left_neighbor[:, -self._clipping_surplus:, :]
+                    already_predicted_context_width = min(
+                        self._clipping_surplus // 2,
+                        col
+                    ) # it can happen, that the second column is already partial and there won't be a full clipping_surplus ready left hand side of it
+                    input_clipping[
+                        self._clipping_surplus // 2 : -self._clipping_surplus // 2,
+                        self._clipping_surplus // 2 - already_predicted_context_width : self._clipping_surplus // 2,
+                        1 :self.output_third_dimension + 1
+                    ] = result.read_arbitrary_fragment(
+                        row,
+                        col - already_predicted_context_width,
+                        output_clipping_size,
+                        already_predicted_context_width
+                    )[:, :, :self.output_third_dimension]
+                
+                # Top neighbors
+                if row > 0:
+                    already_predicted_context_height = min(
+                        self._clipping_surplus // 2,
+                        row
+                    ) # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
+                    input_clipping[
+                        :already_predicted_context_height,
+                        :,
+                        :
+                    ] = top_neighbors[-already_predicted_context_height:]
 
                 # Clean input
                 x = Model.clean_input(input_clipping[:, :, 0: self.input_third_dimension], self.input_third_dimension)
                 #Predict
                 # output_clipping = self._keras_model.predict(tf.expand_dims(x, axis=0))
                 output_clipping = self._keras_model(tf.expand_dims(x, axis=0))[0][0]
-                print(f"output_clipping.shape: {output_clipping.shape}")
                 result.write_arbitrary_fragment(output_clipping, row, col)
-
-                # Update neighbors
-                left_neighbor = output_clipping
-                if row > 0:
-                    top_neighbors[
-                        :,
-                        :2*output_clipping_size,
-                        :
-                    ] = top_neighbors[
-                        :,
-                        output_clipping_size:,
-                        :
-                    ]
-                    top_neighbors[
-                        :,
-                        2*output_clipping_size,
-                        :
-                    ] = result.read_arbitrary_fragment(row - output_clipping_size, col + 2*output_clipping_size, output_clipping_size, output_clipping_size)
+                print(".", end="")
 
         return result
+    
+    def assign_output_to_input(self, input_array: InputGrid, output_array: OutputGrid):
+        third_dimension = min(self.input_third_dimension, self.output_third_dimension)
+        input_array[:, :, 1:third_dimension + 1] = output_array[:, :, :third_dimension]
+
+    def assign_input_to_output(self, output_array: OutputGrid, input_array: InputGrid):
+        third_dimension = min(self.input_third_dimension, self.output_third_dimension)
+        output_array[:, :, :third_dimension] = input_array[:, :, 1:third_dimension + 1]
 
 
 
