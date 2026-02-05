@@ -11,7 +11,10 @@ class GraphLoader():
 
 
     def load_graph(self, city_input: str) -> nx.MultiDiGraph:
-        city_parts = city_input.split(",")
+        if city_input.find(",") != -1:
+            city_parts = city_input.split(",")
+        else:
+            city_parts = city_input.rsplit("-", 1)
         cleaned_parts = [p.strip() for p in city_parts]
         
         place = {}
