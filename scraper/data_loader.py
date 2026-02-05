@@ -168,16 +168,15 @@ class DataLoader():
             on_progress(None, "Elevation was added successfully.")
 
 
-    def add_residential_to_grid(self, grid_manager : GridManager, on_progress : Callable[[float | None, str], None] | None = None):
+    def add_residential_to_grid(self, grid_manager : GridManager, city_name: str, on_progress : Callable[[float | None, str], None] | None = None):
         """
         Enriches the existing grid with is_residential information.
         """
         meta = grid_manager.get_metadata()
-        city = grid_manager._file_name.split(".")[0]
         builder = GridBuilder()
         rasterizer = Rasterizer()
         geometry_processor = GeometryProcessor()
-        gdf_edges = builder.get_city_roads(city, residential_max_radius=30)
+        gdf_edges = builder.get_city_roads(city_name, residential_max_radius=30)
         gdf_residentials = gdf_edges[gdf_edges["is_residential"]]
 
 
