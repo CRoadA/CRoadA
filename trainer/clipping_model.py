@@ -208,10 +208,19 @@ class ClippingModel(Model):
                     ] = top_neighbors[-already_predicted_context_height:]
 
                 # Clean input
+                
                 x = Model.clean_input(input_clipping[:, :, 0: self.input_third_dimension], self.input_third_dimension)
                 #Predict
                 # output_clipping = self._keras_model.predict(tf.expand_dims(x, axis=0))
-                output_clipping = self._keras_model(tf.expand_dims(x, axis=0))[0][0]
+                layers = self._keras_model(tf.expand_dims(x, axis=0))
+                output_clipping = np.zeros((
+                    output_clipping_size,
+                    output_clipping_size,
+                    self.output_third_dimension
+                ))
+                for layer_i in range(len(layers)):
+                    output_clipping[:, :, layer_i] = layers[layer_i][0, :, :, 0]
+
                 result.write_arbitrary_fragment(output_clipping, row, col)
                 print(".", end="")
 

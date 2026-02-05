@@ -83,7 +83,7 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         # Prepare input and output for the model
 
         # Clean the clipping from IS_STREET data where IS_PREDICTED flag is on
-        cleaned_clipping = Model.clean_input(clipping)
+        cleaned_clipping = Model.clean_input(clipping, input_third_dimension)
         # without IS_RESIDENTIAL, but with IS_PREDICTED
         x = np.zeros((cleaned_clipping.shape[0], cleaned_clipping.shape[1], input_third_dimension), dtype=np.float32)
         x[
