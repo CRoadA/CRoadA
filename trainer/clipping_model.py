@@ -45,6 +45,7 @@ class ClippingModel(Model):
         super().__init__(path)
         self._clipping_size = clipping_size
         self._clipping_surplus = clipping_surplus
+
         self.input_third_dimension = input_third_dimension
         self.output_third_dimension = output_third_dimension
 
@@ -115,6 +116,8 @@ class ClippingModel(Model):
         self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1)
 
     def predict(self, input: GridManager[InputGrid]) -> GridManager[OutputGrid]:
+
+        print(f"DEBUG: input.third_dimension_size: {input.get_metadata().third_dimension_size}")
         
         input_metadata = input.get_metadata()
         result_filename = f"from_{os.path.splitext(os.path.basename(input._file_name))[0]}__lat_{format(input_metadata.upper_left_latitude, ".4f").replace(".", "_")}__lon_{format(input_metadata.upper_left_longitude, ".4f").replace(".", "_")}__dim_{input_metadata.rows_number}x{input_metadata.columns_number}"
@@ -133,6 +136,7 @@ class ClippingModel(Model):
         result_h, result_w = result_metadata.rows_number, result_metadata.columns_number
 
         output_clipping_size = self._clipping_size - self._clipping_surplus
+        feedback_third_dimension = min(self.input_third_dimension - 1, self.output_third_dimension)
 
         top_neighbors = np.zeros((self._clipping_surplus // 2, output_clipping_size + self._clipping_surplus, self.input_third_dimension))
         for row in range(0, result_h, output_clipping_size):
@@ -156,13 +160,13 @@ class ClippingModel(Model):
                 top_neighbors[
                     -already_predicted_context_height:,
                     :,
-                    1:self.output_third_dimension + 1
+                    1:feedback_third_dimension + 1
                 ] = result.read_arbitrary_fragment(
                     row - already_predicted_context_height,
                     0,
                     already_predicted_context_height,
                     output_clipping_size + self._clipping_surplus
-                )# [:, :, :]
+                )[:, :, :feedback_third_dimension]
 
             for col in range(0, result_w, output_clipping_size):
 
@@ -187,13 +191,13 @@ class ClippingModel(Model):
                     input_clipping[
                         self._clipping_surplus // 2 : -self._clipping_surplus // 2,
                         self._clipping_surplus // 2 - already_predicted_context_width : self._clipping_surplus // 2,
-                        1 :self.output_third_dimension + 1
+                        1 :feedback_third_dimension + 1
                     ] = result.read_arbitrary_fragment(
                         row,
                         col - already_predicted_context_width,
                         output_clipping_size,
                         already_predicted_context_width
-                    )[:, :, :self.output_third_dimension]
+                    )[:, :, :feedback_third_dimension]
                 
                 # Top neighbors
                 if row > 0:
@@ -209,7 +213,7 @@ class ClippingModel(Model):
 
                 # Clean input
                 
-                x = Model.clean_input(input_clipping[:, :, 0: self.input_third_dimension], self.input_third_dimension)
+                x = Model.clean_input(input_clipping, self.input_third_dimension)
                 #Predict
                 # output_clipping = self._keras_model.predict(tf.expand_dims(x, axis=0))
                 layers = self._keras_model(tf.expand_dims(x, axis=0))
