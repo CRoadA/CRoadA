@@ -24,18 +24,21 @@ class DataLoader():
     segment_h: int
     segment_w: int
     data_dir: str
+    input_third_dimension: int
 
-    def __init__(self, grid_density: float, segment_h: int = 5000, segment_w: int = 5000, data_dir: str = "grids"):
+    def __init__(self, grid_density: float, segment_h: int = 5000, segment_w: int = 5000, data_dir: str = "grids", input_third_dimension: int = 3):
         """Create DataLoader object.
         Args:
             grid_density (float): Distance between two closest different points on the grid (in meters).
             segment_h (int): Height of segment (in grid rows).
             segment_w (int): Width of segment (in grid columns).
-            data_dir (str): Folder for the target files."""
+            data_dir (str): Folder for the target files.
+            input_third_dimension (int): Number of channels in the input grid (default: 3 for street presence, elevation, is_residential)."""
         self.grid_density = grid_density
         self.segment_h = segment_h
         self.segment_w = segment_w
         self.data_dir = data_dir
+        self.input_third_dimension = input_third_dimension
 
 
     def load_city_grid(self, city: str | Polygon, file_name: str, on_progress : Callable[[float | None, str], None] | None = None) -> GridManager:
@@ -67,7 +70,8 @@ class DataLoader():
 
         grid_manager = GridManager(file_name, rows_number=int(rows_number), columns_number=int(columns_number),
                                    grid_density=self.grid_density, segment_h=self.segment_h, segment_w=self.segment_w,
-                                   data_dir=self.data_dir, upper_left_longitude=min_x, upper_left_latitude=max_y)
+                                   data_dir=self.data_dir, upper_left_longitude=min_x, upper_left_latitude=max_y,
+                                   third_dimension_size=self.input_third_dimension)
         print(f"Height: {int(rows_number)}, Width: {int(columns_number)}, rows: {segment_rows}, cols: {segment_cols}")
         
         processed_segments = 0
@@ -86,7 +90,7 @@ class DataLoader():
                 if j == segment_cols - 1:
                     expected_w = columns_number % self.segment_w or self.segment_w
 
-                grid_3d = np.zeros((expected_h, expected_w, 3), dtype=np.float32)
+                grid_3d = np.zeros((expected_h, expected_w, self.input_third_dimension), dtype=np.float32)
 
                 src_h, src_w = grid_2d.shape
                 copy_h = min(src_h, expected_h)
