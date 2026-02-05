@@ -20,7 +20,7 @@ def get_tf_dataset(files: list[GridManager[Grid]], cut_sizes: list[tuple[int, in
     - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
     # Define output signature for the dataset - helps TensorFlow understand the shape and type of the data
-    assert input_third_dimension in [2, 3, 4], "input_third_dimension must be one of following values: [2, 3, 4]."
+    assert input_third_dimension in [1, 2, 3, 4], "input_third_dimension must be one of following values: [2, 3, 4]." # TODO - remove 1 if not only is_street input is needed
     y_spec_dict = {
         "is_street": tf.TensorSpec(shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32)
     }
@@ -51,7 +51,7 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
     - input is a numpy array of shape (clipping_size, clipping_size, 3) containing IS_STREET, ALTITUDE and IS_MODIFIABLE values,
     - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
-    assert input_third_dimension in [2, 3, 4], "input_third_dimension must be one of following values: [2, 3, 4]"
+    assert input_third_dimension in [1, 2, 3, 4], "input_third_dimension must be one of following values: [2, 3, 4]" # TODO - remove 1 if not only is_street input is needed
     assert output_third_dimension in [1, 2, 3], "output_third_dimension must be one of following values: [1, 2, 3]"
     while True:
         # Select a random file and cut size
@@ -83,7 +83,7 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         # Prepare input and output for the model
 
         # Clean the clipping from IS_STREET data where IS_PREDICTED flag is on
-        cleaned_clipping = Model.clean_input(clipping)
+        cleaned_clipping = Model.clean_input(clipping, input_third_dimension)
         # without IS_RESIDENTIAL, but with IS_PREDICTED
         x = np.zeros((cleaned_clipping.shape[0], cleaned_clipping.shape[1], input_third_dimension), dtype=np.float32)
         x[
