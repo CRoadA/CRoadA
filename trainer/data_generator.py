@@ -113,9 +113,7 @@ def clipping_sample_generator(
         # cleaned_clipping = Model.clean_input(clipping, input_third_dimension)
         # without IS_RESIDENTIAL, but with IS_PREDICTED
         x = np.zeros((clipping.shape[0], clipping.shape[1], input_third_dimension), dtype=np.float32)
-
         # Fill IS_PREDICTED channel with ones -> we want to use all data for training
-        # x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 1.0
 
         if input_third_dimension >= 2:
             x[:, :, 1] = clipping[:, :, TRAINING_GRID_INDICES.IS_STREET].astype(np.float32)
