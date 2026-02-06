@@ -120,7 +120,15 @@ class ClippingModel(Model):
         print(f"DEBUG: input.third_dimension_size: {input.get_metadata().third_dimension_size}")
         
         input_metadata = input.get_metadata()
-        result_filename = f"from_{os.path.splitext(os.path.basename(input._file_name))[0]}__lat_{format(input_metadata.upper_left_latitude, ".4f").replace(".", "_")}__lon_{format(input_metadata.upper_left_longitude, ".4f").replace(".", "_")}__dim_{input_metadata.rows_number}x{input_metadata.columns_number}"
+
+        # FIX 1: avoid SyntaxError from nested quotes; keep filename stable
+        lat = f"{input_metadata.upper_left_latitude:.4f}".replace(".", "_")
+        lon = f"{input_metadata.upper_left_longitude:.4f}".replace(".", "_")
+        result_filename = (
+            f"from_{os.path.splitext(os.path.basename(input._file_name))[0]}"
+            f"__lat_{lat}__lon_{lon}"
+            f"__dim_{input_metadata.rows_number}x{input_metadata.columns_number}"
+        )
         result = GridManager(
             result_filename,
             input_metadata.rows_number - self._clipping_surplus,
@@ -173,13 +181,16 @@ class ClippingModel(Model):
                 # last col case handling
                 col = min(col, result_w - output_clipping_size)
 
-                input_clipping = np.ones((self._clipping_size, self._clipping_size, self.input_third_dimension))
-                input_clipping[:, :, :] = input.read_arbitrary_fragment(
+                # input_clipping = np.ones((self._clipping_size, self._clipping_size, self.input_third_dimension))
+                input_clipping = input.read_arbitrary_fragment(
                     row,
                     col,
                     self._clipping_size,
                     self._clipping_size
-                )[:, :, :]
+                ).astype(np.float32)
+
+                # FIX 2: enforce your assumption "IS_PREDICTED = 1 everywhere by default"
+                input_clipping[:, :, 0] = 1.0
 
                 # Take already predicted values
                 # Left Neighbor
@@ -188,16 +199,23 @@ class ClippingModel(Model):
                         self._clipping_surplus // 2,
                         col
                     ) # it can happen, that the second column is already partial and there won't be a full clipping_surplus ready left hand side of it
+                    crop = self._clipping_surplus // 2
+                    y0, y1 = crop, self._clipping_size - crop
+                    x0, x1 = crop - already_predicted_context_width, crop
+
                     input_clipping[
-                        self._clipping_surplus // 2 : -self._clipping_surplus // 2,
-                        self._clipping_surplus // 2 - already_predicted_context_width : self._clipping_surplus // 2,
-                        1 :feedback_third_dimension + 1
+                        y0:y1,
+                        x0:x1,
+                        1:feedback_third_dimension + 1
                     ] = result.read_arbitrary_fragment(
                         row,
                         col - already_predicted_context_width,
                         output_clipping_size,
                         already_predicted_context_width
                     )[:, :, :feedback_third_dimension]
+
+                    # Do NOT clean injected stripe
+                    input_clipping[y0:y1, x0:x1, 0] = 0.0
                 
                 # Top neighbors
                 if row > 0:
@@ -211,8 +229,11 @@ class ClippingModel(Model):
                         :
                     ] = top_neighbors[-already_predicted_context_height:]
 
+                    # Do NOT clean injected top stripe
+                    input_clipping[:already_predicted_context_height, :, 0] = 0.0
+
                 # Clean input
-                
+                # Clean only where IS_PREDICTED == 1
                 x = Model.clean_input(input_clipping, self.input_third_dimension)
                 #Predict
                 # output_clipping = self._keras_model.predict(tf.expand_dims(x, axis=0))
