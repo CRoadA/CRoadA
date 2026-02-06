@@ -2,7 +2,10 @@ import numpy as np
 import networkx as nx
 import math
 import warnings
-from shapely.geometry import LineString
+import traceback
+import os
+import matplotlib.pyplot as plt
+from shapely.geometry import LineString, box, Point
 from typing import List, Tuple, Dict
 from skimage.morphology import remove_small_objects, binary_closing, disk
 from scipy.spatial import cKDTree
@@ -10,58 +13,54 @@ from scipy.spatial import cKDTree
 from grid_manager import GridManager, GRID_INDICES
 from graph_remaker.morphological_remaker import discover_streets
 
-# Suppress future warnings from dependencies
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # --- CONFIGURATION ---
-OVERLAP = 10  # Margin (px) to capture context from neighboring segments
-SNAP_DIST = 5.0  # Distance threshold (px) for merging close nodes
-MIN_SIZE = 10  # Minimum object size for noise removal
-DOWNSAMPLING = 5  # Step size for linestring simplification
+OVERLAP = 20  # Zwiększamy margines, żeby mieć pewność, że kontekst jest wystarczający
+SNAP_DIST = 5.0
+MIN_SIZE = 10
+DOWNSAMPLING = 1  # Mniejszy downsampling dla większej precyzji w debugowaniu
+
+DEBUG_DIR = "debug_segments"
 
 
 class LargeGridProcessor:
-    """
-    Handles processing of large grid files by dividing them into segments
-    with overlap to ensure continuity, then stitches the results into a single graph.
-    """
-
     def __init__(self, grid_manager: GridManager):
         self.gm = grid_manager
         self.meta = grid_manager.get_metadata()
-
-        # Initialize global graph with WGS84 CRS
         self.G = nx.MultiDiGraph()
         self.G.graph['crs'] = 'EPSG:4326'
 
+        if not os.path.exists(DEBUG_DIR):
+            os.makedirs(DEBUG_DIR)
+        else:
+            for f in os.listdir(DEBUG_DIR):
+                os.remove(os.path.join(DEBUG_DIR, f))
+
     def run(self) -> nx.MultiDiGraph:
-        """
-        Main execution loop. Iterates over grid segments, processes them,
-        and aggregates results into the global graph.
-        """
         rows_total = self.meta.rows_number
         cols_total = self.meta.columns_number
         seg_h = self.meta.segment_h
         seg_w = self.meta.segment_w
 
-        # Calculate grid dimensions in segments
         n_rows = math.ceil(rows_total / seg_h)
         n_cols = math.ceil(cols_total / seg_w)
 
-        print(f"Starting processing. Grid: {rows_total}x{cols_total}. Segments: {n_rows}x{n_cols}.")
+        print(f"DEBUG MODE ON. Processing Grid: {rows_total}x{cols_total}. Segments: {n_rows}x{n_cols}.")
+        print(f"Check '{DEBUG_DIR}' folder for visualization of each segment processing.")
 
         processed = 0
         skipped = 0
 
         for r in range(n_rows):
             for c in range(n_cols):
-                try:
-                    # 1. Build "Super-Segment" (Central segment + Overlap from neighbors)
-                    # This ensures seamless detection across borders.
-                    grid, offset_y, offset_x = self._load_super_segment(r, c)
+                core_y0 = r * seg_h
+                core_x0 = c * seg_w
+                core_y1 = min(core_y0 + seg_h, rows_total)
+                core_x1 = min(core_x0 + seg_w, cols_total)
 
-                    # 2. Data Cleaning
-                    # Use binary_closing to bridge small gaps without excessive thickening.
+                try:
+                    grid, offset_y, offset_x = self._load_super_segment(r, c)
                     mask = grid[:, :, GRID_INDICES.IS_STREET] > 0
 
                     if np.sum(mask) == 0:
@@ -70,255 +69,301 @@ class LargeGridProcessor:
 
                     mask = remove_small_objects(mask, min_size=MIN_SIZE)
                     mask = binary_closing(mask, footprint=disk(1))
-
                     grid[:, :, GRID_INDICES.IS_STREET] = mask.astype(np.float32)
 
-                    # 3. Execute Street Discovery
                     try:
-                        (cl_cr, c_cr, cl_st, c_st) = discover_streets(grid)
+                        res = discover_streets(grid)
+                        all_crossroads = res[0] + res[1]
+                        all_streets = res[2] + res[3]
 
-                        # 4. Add to Graph (Coordinate Translation)
-                        # Offsets are subtracted to map local super-segment coords to global.
-                        self._add_to_graph(
-                            cl_cr + c_cr,
-                            cl_st + c_st,
-                            global_offset_y=offset_y,
-                            global_offset_x=offset_x
+                        self._debug_visualize_segment(
+                            r, c, grid, mask, all_streets, all_crossroads,
+                            offset_y, offset_x, (core_y0, core_x0, core_y1, core_x1)
                         )
 
-                    except IndexError:
-                        # Geometric complexity might cause algorithm failure in rare cases
-                        print(f"WARN: Geometry error in segment ({r}, {c})")
-                        skipped += 1
+                        self._add_to_graph_debug(
+                            all_crossroads,
+                            all_streets,
+                            global_offset_y=offset_y,
+                            global_offset_x=offset_x,
+                            clip_bounds=(core_y0, core_x0, core_y1, core_x1),
+                            segment_id=(r, c)
+                        )
+
                     except Exception as e:
-                        print(f"WARN: Algorithm error in segment ({r}, {c}): {e}")
+                        print(f"CRITICAL ALGORITHM ERROR in segment ({r}, {c}):")
+                        traceback.print_exc()
                         skipped += 1
 
                 except Exception as e:
                     print(f"CRITICAL: I/O Error in segment ({r}, {c}): {e}")
+                    traceback.print_exc()
                     skipped += 1
 
                 processed += 1
-                if processed % 10 == 0:
-                    print(f"Progress: {processed}/{n_rows * n_cols}...")
+                print(f"Processed segment ({r}, {c})")
 
-        print(f"Processing finished. Skipped: {skipped}. Starting topology repair (Snapping)...")
+        print(f"Processing finished. Starting Snapping...")
         return self._finalize()
 
+    def _debug_visualize_segment(self, r, c, grid, mask, streets, crossroads, off_y, off_x, core_bounds):
+        """
+        Tworzy obraz PNG pokazujący co się dzieje w segmencie.
+        """
+        plt.figure(figsize=(10, 10))
+        plt.imshow(mask, cmap='gray', origin='upper')
+
+        core_y0, core_x0, core_y1, core_x1 = core_bounds
+
+        loc_y0 = core_y0 - off_y
+        loc_x0 = core_x0 - off_x
+        loc_y1 = core_y1 - off_y
+        loc_x1 = core_x1 - off_x
+
+        plt.plot([loc_x0, loc_x1, loc_x1, loc_x0, loc_x0],
+                 [loc_y0, loc_y0, loc_y1, loc_y1, loc_y0],
+                 'b-', linewidth=2, label='Core Box (Clip Limit)')
+
+        for st in streets:
+            pts = st.linestring
+            if len(pts) > 1:
+                ys = [p[0] for p in pts]
+                xs = [p[1] for p in pts]
+                plt.plot(xs, ys, 'r-', alpha=0.6, linewidth=1)
+                # Oznacz początek i koniec
+                plt.plot(xs[0], ys[0], 'r.', markersize=5)
+                plt.plot(xs[-1], ys[-1], 'r.', markersize=5)
+
+        for cr in crossroads:
+            if cr.points:
+                ys = [p[0] for p in cr.points]
+                xs = [p[1] for p in cr.points]
+                plt.plot(xs, ys, 'y.', markersize=3)
+
+        plt.title(f"Seg ({r}, {c}) | Off: y={off_y}, x={off_x} | Core: {core_y0}-{core_y1}, {core_x0}-{core_x1}")
+        plt.legend()
+        plt.savefig(os.path.join(DEBUG_DIR, f"seg_{r}_{c}.png"))
+        plt.close()
+
     def _load_super_segment(self, r, c) -> Tuple[np.ndarray, int, int]:
-        """
-        Loads the target segment (r, c) and stitches overlapping margins from neighbors.
-        Returns: (Padded Grid, Global Y Start, Global X Start)
-        """
+
         seg_h = self.meta.segment_h
         seg_w = self.meta.segment_w
 
-        # 1. Determine bounds of the "Super-Segment" in global coordinates
-        # Center segment bounds
         global_y0 = r * seg_h
         global_x0 = c * seg_w
         global_y1 = min(global_y0 + seg_h, self.meta.rows_number)
         global_x1 = min(global_x0 + seg_w, self.meta.columns_number)
 
-        # Bounds with overlap (clamped to image dimensions)
         read_y0 = max(0, global_y0 - OVERLAP)
         read_x0 = max(0, global_x0 - OVERLAP)
         read_y1 = min(self.meta.rows_number, global_y1 + OVERLAP)
         read_x1 = min(self.meta.columns_number, global_x1 + OVERLAP)
 
-        # Target dimensions
         target_h = read_y1 - read_y0
         target_w = read_x1 - read_x0
 
-        # Initialize container
         super_grid = np.zeros((target_h, target_w, 3), dtype=np.float32)
 
-        # 2. Tiling Logic
-        # Identify which physical segments intersect with the requested area
         start_seg_r = read_y0 // seg_h
         end_seg_r = (read_y1 - 1) // seg_h
-
         start_seg_c = read_x0 // seg_w
         end_seg_c = (read_x1 - 1) // seg_w
 
-        # Iterate over relevant segments and stitch them
         for sr in range(start_seg_r, end_seg_r + 1):
             for sc in range(start_seg_c, end_seg_c + 1):
-                # Load source chunk
                 chunk = self.gm.read_segment(sr, sc)
                 ch_h, ch_w, _ = chunk.shape
 
-                # Global coords of the chunk
                 chunk_glob_y0 = sr * seg_h
                 chunk_glob_x0 = sc * seg_w
-                chunk_glob_y1 = chunk_glob_y0 + ch_h
-                chunk_glob_x1 = chunk_glob_x0 + ch_w
 
-                # Calculate Intersection
                 iy0 = max(read_y0, chunk_glob_y0)
                 ix0 = max(read_x0, chunk_glob_x0)
-                iy1 = min(read_y1, chunk_glob_y1)
-                ix1 = min(read_x1, chunk_glob_x1)
+                iy1 = min(read_y1, chunk_glob_y0 + ch_h)
+                ix1 = min(read_x1, chunk_glob_x0 + ch_w)
 
                 if iy1 > iy0 and ix1 > ix0:
-                    # Source indices (relative to chunk)
                     src_y = iy0 - chunk_glob_y0
                     src_x = ix0 - chunk_glob_x0
-
-                    # Destination indices (relative to super_grid)
                     dst_y = iy0 - read_y0
                     dst_x = ix0 - read_x0
-
-                    height = iy1 - iy0
-                    width = ix1 - ix0
-
-                    super_grid[dst_y: dst_y + height, dst_x: dst_x + width] = \
-                        chunk[src_y: src_y + height, src_x: src_x + width]
+                    h = iy1 - iy0
+                    w = ix1 - ix0
+                    super_grid[dst_y: dst_y + h, dst_x: dst_x + w] = \
+                        chunk[src_y: src_y + h, src_x: src_x + w]
 
         return super_grid, read_y0, read_x0
 
-    def _add_to_graph(self, crossroads, streets, global_offset_y, global_offset_x):
-        """Adds discovered entities to the graph with global coordinates."""
+    def _add_to_graph_debug(self, crossroads, streets, global_offset_y, global_offset_x, clip_bounds, segment_id):
+        core_y0, core_x0, core_y1, core_x1 = clip_bounds
 
-        # Mapping: Local Point -> Global Node ID
+        EPSILON = 0.1
+        clip_box = box(core_x0 - EPSILON, core_y0 - EPSILON, core_x1 + EPSILON, core_y1 + EPSILON)
+
         point_map = {}
 
-        # Process Crossroads
+        # --- SKRZYŻOWANIA ---
         for cr in crossroads:
             if not cr.points: continue
-
-            # Centroid calculation
             ys = [p[0] for p in cr.points]
             xs = [p[1] for p in cr.points]
             cy = sum(ys) / len(ys)
             cx = sum(xs) / len(xs)
-
-            # Global coordinates
             gy = global_offset_y + cy
             gx = global_offset_x + cx
 
-            # ID as string (will be snapped later)
-            node_id = f"{gy:.1f}_{gx:.1f}"
+            if not (core_y0 <= gy < core_y1 and core_x0 <= gx < core_x1):
+                continue
 
+            node_id = f"{gy:.1f}_{gx:.1f}"
             if not self.G.has_node(node_id):
                 self.G.add_node(node_id, y=gy, x=gx, type='crossroad')
 
             for p in cr.points:
                 point_map[p] = node_id
 
-        # Process Streets
+        # --- ULICE ---
+        streets_added = 0
+        streets_dropped = 0
+
         for st in streets:
             if len(st.linestring) < 2: continue
 
-            # Order and simplify geometry
-            clean_pts = self._sort_and_downsample(st.linestring)
-            if len(clean_pts) < 2: continue
+            full_geo_points = []
+            for (ly, lx) in st.linestring:
+                full_geo_points.append((global_offset_x + lx, global_offset_y + ly))
 
-            # Start/End points (local)
-            start_p = clean_pts[0]
-            end_p = clean_pts[-1]
+            full_geom = LineString(full_geo_points)
 
-            # Resolve Nodes
-            u = self._get_node_id(start_p, global_offset_y, global_offset_x, point_map)
-            v = self._get_node_id(end_p, global_offset_y, global_offset_x, point_map)
+            # PRZYCINANIE
+            clipped = full_geom.intersection(clip_box)
 
-            if u != v:
-                # Global geometry construction
-                geo_points = []
-                for (ly, lx) in clean_pts:
-                    geo_points.append((global_offset_x + lx, global_offset_y + ly))
+            if clipped.is_empty:
+                streets_dropped += 1
+                continue
 
-                geom = LineString(geo_points)
-                self.G.add_edge(u, v, geometry=geom)
+            geoms_to_process = []
+            if clipped.geom_type == 'LineString':
+                geoms_to_process.append(clipped)
+            elif clipped.geom_type == 'MultiLineString':
+                geoms_to_process.extend(clipped.geoms)
+            elif clipped.geom_type == 'GeometryCollection':
+                for g in clipped.geoms:
+                    if g.geom_type == 'LineString':
+                        geoms_to_process.append(g)
 
-    def _get_node_id(self, local_p, off_y, off_x, mapping):
-        """Retrieves or creates a node ID. Creates a connector node if not a crossroad."""
-        if local_p in mapping:
-            return mapping[local_p]
+            if not geoms_to_process:
+                streets_dropped += 1
 
-        gy = off_y + local_p[0]
-        gx = off_x + local_p[1]
-        node_id = f"{gy:.1f}_{gx:.1f}"
+            for geom in geoms_to_process:
+                if len(geom.coords) < 2: continue
 
-        if not self.G.has_node(node_id):
-            self.G.add_node(node_id, y=gy, x=gx, type='connector')
+                coords = list(geom.coords)
+                if len(coords) > 2:
+                    coords = [coords[0]] + coords[1:-1:DOWNSAMPLING] + [coords[-1]]
 
-        return node_id
+                start_x, start_y = coords[0]
+                end_x, end_y = coords[-1]
 
-    def _sort_and_downsample(self, points):
-        """Sorts points using Nearest Neighbor heuristic and downsamples."""
-        if not points: return []
-        ordered = [points[0]]
-        remain = set(points[1:])
-        curr = points[0]
+                loc_start_y = int(round(start_y - global_offset_y))
+                loc_start_x = int(round(start_x - global_offset_x))
+                loc_end_y = int(round(end_y - global_offset_y))
+                loc_end_x = int(round(end_x - global_offset_x))
 
-        while remain:
-            # Optimization: Search only in local vicinity
-            candidates = [p for p in remain if abs(p[0] - curr[0]) < 15 and abs(p[1] - curr[1]) < 15]
-            if not candidates: candidates = remain
+                u = point_map.get((loc_start_y, loc_start_x))
+                if not u:
+                    u = f"{start_y:.1f}_{start_x:.1f}"
+                    if not self.G.has_node(u): self.G.add_node(u, y=start_y, x=start_x, type='connector')
 
-            nearest = min(candidates, key=lambda p: (p[0] - curr[0]) ** 2 + (p[1] - curr[1]) ** 2)
-            ordered.append(nearest)
-            remain.remove(nearest)
-            curr = nearest
+                v = point_map.get((loc_end_y, loc_end_x))
+                if not v:
+                    v = f"{end_y:.1f}_{end_x:.1f}"
+                    if not self.G.has_node(v): self.G.add_node(v, y=end_y, x=end_x, type='connector')
 
-        return ordered[::DOWNSAMPLING] + [ordered[-1]]
+                if u != v:
+                    self.G.add_edge(u, v, geometry=LineString(coords), slope=0.0, width=0.0)
+                    streets_added += 1
+
+        print(
+            f"  > Seg {segment_id}: Raw streets: {len(streets)}. Added segments: {streets_added}. Dropped empty: {streets_dropped}")
 
     def _finalize(self):
-        """Performs Snapping and Coordinate Conversion."""
         if len(self.G.nodes) == 0:
+            print("WARNING: Graph is empty before finalize.")
             return self.G
 
-        # 1. Snapping (Merging close nodes)
         nodes = list(self.G.nodes(data=True))
         coords = np.array([[d['y'], d['x']] for n, d in nodes])
         ids = [n for n, d in nodes]
 
+        print(f"Snapping {len(nodes)} nodes with radius {SNAP_DIST}...")
         tree = cKDTree(coords)
-        pairs = tree.query_pairs(r=SNAP_DIST)
+        pairs = list(tree.query_pairs(r=SNAP_DIST))
+        print(f"  Found {len(pairs)} pairs to merge.")
 
-        # Use UnionFind to group nodes to be merged
-        uf = nx.utils.UnionFind()
-        for i, j in pairs:
-            uf.union(ids[i], ids[j])
+        if pairs:
+            uf = nx.utils.UnionFind()
+            for i, j in pairs:
+                uf.union(ids[i], ids[j])
 
-        # Merge groups
-        for component in uf.to_sets():
-            if len(component) < 2: continue
-            nodes_list = list(component)
+            new_G = nx.MultiDiGraph()
+            new_G.graph = self.G.graph.copy()
+            winners = {}
 
-            # Select winner (Prefer Crossroad)
-            winner = sorted(nodes_list, key=lambda n: 0 if self.G.nodes[n].get('type') == 'crossroad' else 1)[0]
+            for component in uf.to_sets():
+                winner_node = \
+                sorted(list(component), key=lambda n: (0 if self.G.nodes[n].get('type') == 'crossroad' else 1, n))[0]
+                if winner_node not in new_G:
+                    new_G.add_node(winner_node, **self.G.nodes[winner_node])
+                for node in component:
+                    winners[node] = winner_node
 
-            for loser in nodes_list:
-                if loser == winner: continue
+            for u, v, key, data in self.G.edges(keys=True, data=True):
+                final_u = winners.get(u, u)
+                final_v = winners.get(v, v)
 
-                # Move edges
-                for u, _, d in list(self.G.in_edges(loser, data=True)):
-                    if u != winner: self.G.add_edge(u, winner, **d)
-                for _, v, d in list(self.G.out_edges(loser, data=True)):
-                    if v != winner: self.G.add_edge(winner, v, **d)
+                if final_u not in new_G: new_G.add_node(final_u, **self.G.nodes[final_u])
+                if final_v not in new_G: new_G.add_node(final_v, **self.G.nodes[final_v])
 
-                self.G.remove_node(loser)
+                if final_u != final_v:
+                    old_geom = data.get('geometry')
+                    if old_geom:
+                        g_coords = list(old_geom.coords)
+                        uy, ux = new_G.nodes[final_u]['y'], new_G.nodes[final_u]['x']
+                        vy, vx = new_G.nodes[final_v]['y'], new_G.nodes[final_v]['x']
+                        new_g_coords = [(ux, uy)] + g_coords[1:-1] + [(vx, vy)]
+                        data['geometry'] = LineString(new_g_coords)
 
-        # 2. Georeferencing (Pixel -> Lat/Lon)
+                    new_G.add_edge(final_u, final_v, key=key, **data)
+
+            self.G = new_G
+
+        # Konwersja na lat/lon
+        print("Converting to Lat/Lon...")
         lat0 = self.meta.upper_left_latitude
         lon0 = self.meta.upper_left_longitude
         res = self.meta.grid_density
-
-        # Approximation for meters per degree
         m_lat = 111132.0
         m_lon = 111412.0 * math.cos(math.radians(lat0))
 
         for n, d in self.G.nodes(data=True):
-            self.G.nodes[n]['y'] = lat0 - (d['y'] * res / m_lat)
-            self.G.nodes[n]['x'] = lon0 + (d['x'] * res / m_lon)
+            d['y'] = lat0 - (d['y'] * res / m_lat)
+            d['x'] = lon0 + (d['x'] * res / m_lon)
+
+        for u, v, k, d in self.G.edges(keys=True, data=True):
+            if 'geometry' in d:
+                new_coords = []
+                for x_px, y_px in d['geometry'].coords:
+                    lat = lat0 - (y_px * res / m_lat)
+                    lon = lon0 + (x_px * res / m_lon)
+                    new_coords.append((lon, lat))
+                d['geometry'] = LineString(new_coords)
 
         return self.G
 
 
 def process_large_grid(file_name: str, output_graph_path: str = None) -> nx.MultiDiGraph:
-    """Wrapper function to instantiate processor and run the pipeline."""
     gm = GridManager(file_name)
     proc = LargeGridProcessor(gm)
     G = proc.run()

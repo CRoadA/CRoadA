@@ -243,8 +243,8 @@ def _find_street_topological_ends(separated_streets_image: np.ndarray[(Any, Any)
 
         _, point = node
         y, x = point
-
-        w, h = separated_streets_image.shape
+        #w, h = separated_streets_image.shape
+        h, w = separated_streets_image.shape
 
         checked_coords = [
             (max(0, y-1), max(0, x-1)),
@@ -302,8 +302,9 @@ def _find_street_topological_ends(separated_streets_image: np.ndarray[(Any, Any)
     second_path = []
     for path in paths:
         # below is used index == 1, because at index == 0 all paths have the same point (handle)
-        if path[1] != first_path[1] and len(path) > len(second_path):
-            second_path = path
+        if len(path) > 1 and len(first_path) > 1:
+            if path[1] != first_path[1] and len(path) > len(second_path):
+                second_path = path
     if not second_path: # if no disjoint path was found
         second_path = [first_path[0]] # use the handle as the opposite end
 
@@ -314,8 +315,8 @@ def _order_street_linestrings(separated_streets_image: np.ndarray[(Any, Any), np
     def _queue_neighbors_if_necessary(point: GridPoint, street: StreetDiscovery, separated_streets_image: np.ndarray[(Any, Any), np.bool], queue: list[GridPoint]):
 
         y, x = point
-
-        w, h = separated_streets_image.shape
+        # w, h = separated_streets_image.shape
+        h, w = separated_streets_image.shape
         queued = []
 
         checked_coords = [

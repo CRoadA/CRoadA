@@ -13,3 +13,4 @@ cache
 /venv
 /.vscode
 /app_grids
+/debug_segments/
