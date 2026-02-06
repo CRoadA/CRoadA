@@ -47,8 +47,8 @@ def cut_from_grid_segments(
     cut_start_y = min(cut_start_y, metadata.rows_number - cut_size[0])
     
     # Calculate end point
-    cut_end_x = min(cut_start_x + cut_size[0], metadata.columns_number)
-    cut_end_y = min(cut_start_y + cut_size[1], metadata.rows_number)
+    cut_end_x = min(cut_start_x + cut_size[1], metadata.columns_number)
+    cut_end_y = min(cut_start_y + cut_size[0], metadata.rows_number)
 
     # Determine which segments to read
     segment_w, segment_h = metadata.segment_w, metadata.segment_h
@@ -61,6 +61,17 @@ def cut_from_grid_segments(
     which_segment_end_y = int((cut_end_y - 1) // segment_h)
 
     # print(f"Segments to read: start_x={which_segment_start_x}, start_y={which_segment_start_y}, end_x={which_segment_end_x}, end_y={which_segment_end_y}")  # Debug print
+
+    start_y_in_seg = cut_start_y % segment_h
+    end_y_in_seg = cut_end_y % segment_h
+    if end_y_in_seg == 0:
+        end_y_in_seg = segment_h  # CHANGE: boundary means "up to end of segment", not ":0"
+
+    start_x_in_seg = cut_start_x % segment_w
+    end_x_in_seg = cut_end_x % segment_w
+    if end_x_in_seg == 0:
+        end_x_in_seg = segment_w
+
     cut_x = np.array([])  # Grid()
     cut_y = np.array([])
     # Go by segments and merge them into one bigger cut - first vertically, then horizontally.
@@ -72,21 +83,21 @@ def cut_from_grid_segments(
 
             # Merge segment_y into cut_y vertically.
             if indx_y == which_segment_start_y and indx_y == which_segment_end_y:
-                cut_y = segment_y[cut_start_y % segment_h : cut_end_y % segment_h, :]
+                cut_y = segment_y[start_y_in_seg:end_y_in_seg, :]
             elif indx_y == which_segment_start_y:
-                cut_y = segment_y[cut_start_y % segment_h :, :]
+                cut_y = segment_y[start_y_in_seg:, :]
             elif indx_y == which_segment_end_y:
-                cut_y = np.vstack((cut_y, segment_y[: cut_end_y % segment_h, :]))
+                cut_y = np.vstack((cut_y, segment_y[:end_y_in_seg, :]))
             else:
                 cut_y = np.vstack((cut_y, segment_y))
 
         # Merge cut_y into cut_x horizontally.
         if indx_x == which_segment_start_x and indx_x == which_segment_end_x:
-            cut_x = cut_y[:, cut_start_x % segment_w : cut_end_x % segment_w]
+            cut_x = cut_y[:, start_x_in_seg:end_x_in_seg]
         elif indx_x == which_segment_start_x:
-            cut_x = cut_y[:, cut_start_x % segment_w :]
+            cut_x = cut_y[:, start_x_in_seg :]
         elif indx_x == which_segment_end_x:
-            cut_x = np.hstack((cut_x, cut_y[:, : cut_end_x % segment_w]))
+            cut_x = np.hstack((cut_x, cut_y[:, : end_x_in_seg]))
         else:
             cut_x = np.hstack((cut_x, cut_y))
 

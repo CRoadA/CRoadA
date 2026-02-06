@@ -115,26 +115,30 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
 def generate_cut(grid_manager: GridManager[Grid], cut_size: tuple[int, int]) -> tuple[tuple[int, int], np.ndarray]:
     """Get the next random cut (part of a batch item) from the file (a batch item == multiple cuts)."""
     grid_metadata = grid_manager.get_metadata()
-    grid_rows, grid_cols = grid_metadata.rows_number, grid_metadata.columns_number
+    grid_cols, grid_rows = grid_metadata.columns_number, grid_metadata.rows_number
 
-    max_x = grid_rows - cut_size[0]  # max starting x for cut
-    max_y = grid_cols - cut_size[1]  # max starting y for cut
+    cut_w = min(cut_size[1], grid_cols)
+    cut_h = min(cut_size[0], grid_rows)
 
-    if cut_size[0] > grid_rows or cut_size[1] > grid_cols:
-        cut_size = (grid_rows, grid_cols)
-
-    max_x = grid_cols - cut_size[0] - 1  # max starting x for cut
-    max_y = grid_rows - cut_size[1] - 1  # max starting y for cut
+    max_x = grid_cols - cut_w - 1  # max starting x for cut
+    max_y = grid_rows - cut_h - 1  # max starting y for cut
 
     # Choose random starting point
-    cut_start_x = random.randint(0, max_x)
-    cut_start_y = random.randint(0, max_y)
+    cut_start_x = random.randint(0, max_x) if max_x > 0 else 0
+    cut_start_y = random.randint(0, max_y) if max_y > 0 else 0
 
     # Create cut grid
-    cut = cut_from_grid_segments(grid_manager, cut_start_x, cut_start_y, cut_size, surplus=0, clipping=False)
+    cut = cut_from_grid_segments(
+        grid_manager,
+        cut_start_x,
+        cut_start_y,
+        (cut_h, cut_w),
+        surplus=0,
+        clipping=False
+    )
 
     # append the IS_PREDICTED channel
-    result = np.zeros((cut_size[0], cut_size[1], cut.shape[2] + 1), dtype=np.float32)
+    result = np.zeros((cut_h, cut_w, cut.shape[2] + 1), dtype=np.float32)
     result[:, :, [
         TRAINING_GRID_INDICES.IS_STREET,
         TRAINING_GRID_INDICES.ALTITUDE,
