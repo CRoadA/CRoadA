@@ -18,15 +18,15 @@ def base_clipping_model(clipping_size=512, clipping_surplus=64, input_third_dime
     assert output_third_dimension in [1, 2, 3], "output_third_dimension needs to be one of values: [1, 2, 3]"
 
     out_is_street = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 0:1]), name="is_street", dtype="float32")(x)
-    outputs = [out_is_street]
+    outputs = {"is_street": out_is_street}
     
     if output_third_dimension >= 2:
         out_altitude = tf.keras.layers.Lambda(lambda t: t[..., 1:2], name="altitude", dtype="float32")(x)
-        outputs.append(out_altitude)
+        outputs["altitude"] = out_altitude
     
     if output_third_dimension >= 3:
         out_is_residential = tf.keras.layers.Lambda(lambda t: tf.keras.activations.sigmoid(t[..., 2:3]), name="is_residential", dtype="float32")(x)
-        outputs.append(out_is_residential)
+        outputs["is_residential"] = out_is_residential
 
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
@@ -75,13 +75,13 @@ def unet(clipping_size=512, clipping_surplus=64, input_third_dimension=4, output
     # Output heads
     assert output_third_dimension in [1, 2, 3], "output_third_dimension needs to be one of values: [1, 2, 3]"
 
-    outputs = []
+    outputs = {}
     if output_third_dimension >= 1:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6))
+        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6)
     if output_third_dimension >= 2:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6))
+        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6)
     if output_third_dimension >= 3:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c6))
+        outputs["is_residential"] = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c6)
 
     model = tf.keras.Model(inputs, outputs)
     return model
@@ -123,13 +123,13 @@ def alex_inspired(clipping_size=512, clipping_surplus=64, input_third_dimension=
     c18 = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(c18)
 
     # Output heads
-    outputs = []
+    outputs = {}
     if output_third_dimension >= 1:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c18))
+        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c18)
     if output_third_dimension >= 2:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c18))
+        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c18)
     if output_third_dimension >= 3:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c18))
+        outputs["is_residential"] = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c18)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
@@ -167,13 +167,13 @@ def test_clipping_model_shallowed_unet(clipping_size=512, clipping_surplus=64, i
     c6 = tf.keras.layers.Cropping2D(cropping=((crop, crop), (crop, crop)))(c6)
 
     # Output heads
-    outputs = []
+    outputs = {}
     if output_third_dimension >= 1:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6))
+        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_street')(c6)
     if output_third_dimension >= 2:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6))
+        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation='linear', name='altitude')(c6)
     if output_third_dimension >= 3:
-        outputs.append(tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c6))
+        outputs["is_residential"] = tf.keras.layers.Conv2D(1, 1, activation='sigmoid', name='is_residential')(c6)
 
     model = tf.keras.Model(inputs, outputs)
     return model

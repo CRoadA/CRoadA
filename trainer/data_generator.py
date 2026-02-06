@@ -123,8 +123,8 @@ def generate_cut(grid_manager: GridManager[Grid], cut_size: tuple[int, int]) -> 
     if cut_size[0] > grid_rows or cut_size[1] > grid_cols:
         cut_size = (grid_rows, grid_cols)
 
-    max_x = grid_cols - cut_size[0]  # max starting x for cut
-    max_y = grid_rows - cut_size[1]  # max starting y for cut
+    max_x = grid_cols - cut_size[0] - 1  # max starting x for cut
+    max_y = grid_rows - cut_size[1] - 1  # max starting y for cut
 
     # Choose random starting point
     cut_start_x = random.randint(0, max_x)
