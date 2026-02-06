@@ -212,7 +212,10 @@ class ClippingModel(Model):
                 x = Model.clean_input(input_clipping[:, :, 0: self.input_third_dimension], self.input_third_dimension)
                 #Predict
                 # output_clipping = self._keras_model.predict(tf.expand_dims(x, axis=0))
-                layers = self._keras_model(tf.expand_dims(x, axis=0))
+                layers = list(self._keras_model(tf.expand_dims(x, axis=0)).values())
+
+                # print("layers: ", layers)
+
                 output_clipping = np.zeros((
                     output_clipping_size,
                     output_clipping_size,
