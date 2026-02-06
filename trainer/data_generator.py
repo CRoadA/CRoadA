@@ -83,21 +83,34 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         # Prepare input and output for the model
 
         # Clean the clipping from IS_STREET data where IS_PREDICTED flag is on
-        cleaned_clipping = Model.clean_input(clipping, input_third_dimension)
+        #cleaned_clipping = Model.clean_input(clipping, input_third_dimension)
         # without IS_RESIDENTIAL, but with IS_PREDICTED
-        x = np.zeros((cleaned_clipping.shape[0], cleaned_clipping.shape[1], input_third_dimension), dtype=np.float32)
+        x = np.zeros((clipping.shape[0], clipping.shape[1], input_third_dimension), dtype=np.float32)
         
         # Fill IS_PREDICTED channel with ones -> we want to use all data for training
-        x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 1.0
+        #x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 1.0
 
         if input_third_dimension >= 2:
-            x[:, :, 1] = cleaned_clipping[:, :, TRAINING_GRID_INDICES.IS_STREET].astype(np.float32)
+            x[:, :, 1] = clipping[:, :, TRAINING_GRID_INDICES.IS_STREET].astype(np.float32)
         if input_third_dimension >= 3:
-            x[:, :, 2] = cleaned_clipping[:, :, TRAINING_GRID_INDICES.ALTITUDE].astype(np.float32)
+            x[:, :, 2] = clipping[:, :, TRAINING_GRID_INDICES.ALTITUDE].astype(np.float32)
         if input_third_dimension >= 4:
-            x[:, :, 3] = cleaned_clipping[:, :, TRAINING_GRID_INDICES.IS_RESIDENTIAL].astype(np.float32)
+            x[:, :, 3] = clipping[:, :, TRAINING_GRID_INDICES.IS_RESIDENTIAL].astype(np.float32)
 
         crop = int(input_surplus / 2)
+
+        # IMPORTANT: predict only the central area; keep border as known context
+        # IS_PREDICTED = 1 in center, 0 on border
+        x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 0.0
+        x[
+            crop : clipping_size - crop,
+            crop : clipping_size - crop,
+            TRAINING_GRID_INDICES.IS_PREDICTED
+        ] = 1.0
+
+        # Now hide (zero) IS_STREET (and IS_RESIDENTIAL) only where IS_PREDICTED == 1
+        x = Model.clean_input(x, input_third_dimension)
+
         # Prepare the area which we expect the model to predict
         output_clipping = clipping[
             crop : clipping_size - crop,
