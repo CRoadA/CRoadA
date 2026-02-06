@@ -86,19 +86,23 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         cleaned_clipping = Model.clean_input(clipping, input_third_dimension)
         # without IS_RESIDENTIAL, but with IS_PREDICTED
         x = np.zeros((cleaned_clipping.shape[0], cleaned_clipping.shape[1], input_third_dimension), dtype=np.float32)
-        x[
-            :,
-            :,
-            1:input_third_dimension
-        ] = cleaned_clipping[:, :, 0:(input_third_dimension - 1)].astype(np.float32) # Keras does not like float64
+        
         # Fill IS_PREDICTED channel with ones -> we want to use all data for training
-        x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 1
+        x[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 1.0
 
+        if input_third_dimension >= 2:
+            x[:, :, 1] = cleaned_clipping[:, :, TRAINING_GRID_INDICES.IS_STREET].astype(np.float32)
+        if input_third_dimension >= 3:
+            x[:, :, 2] = cleaned_clipping[:, :, TRAINING_GRID_INDICES.ALTITUDE].astype(np.float32)
+        if input_third_dimension >= 4:
+            x[:, :, 3] = cleaned_clipping[:, :, TRAINING_GRID_INDICES.IS_RESIDENTIAL].astype(np.float32)
+
+        crop = int(input_surplus / 2)
         # Prepare the area which we expect the model to predict
         output_clipping = clipping[
-            int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
-            int(input_surplus / 2) : clipping_size - int(input_surplus / 2),
-            :output_third_dimension, # already without IS_PREDICTED
+            crop : clipping_size - crop,
+            crop : clipping_size - crop,
+            1 : 1 + output_third_dimension, # already without IS_PREDICTED
         ]
 
         # Prepare output values
