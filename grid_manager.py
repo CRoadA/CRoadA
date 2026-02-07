@@ -112,51 +112,146 @@ class GridManager(Generic[GridType]):
         else:
             raise ValueError(f"Unsupported file version {self._metadata.version}")
 
+    # Corrected by ChatGPT:
+    # CHANGE: new general-purpose functions for reading/writing arbitrary fragments of the grid (not just whole segments). These functions read/write only required bytes from/to the file, thus they are more efficient when the fragment is smaller than the segment.
     def read_arbitrary_fragment(self, row: int, col: int, height: int, width: int) -> GridType:
-
         assert row + height <= self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
         assert col + width <= self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
-        
+
         metadata = self._metadata
         segment_h, segment_w = metadata.segment_h, metadata.segment_w
 
         start_segment_row = row // segment_h
         start_segment_column = col // segment_w
-        end_segment_row = (row + height) // segment_h
-        end_segment_column = (col + width) // segment_w
+        end_segment_row = (row + height - 1) // segment_h
+        end_segment_column = (col + width - 1) // segment_w
 
-        result = np.zeros((height, width, metadata.third_dimension_size))
+        third = metadata.third_dimension_size
+        result = np.zeros((height, width, third), dtype=np.float32)
 
-        for segment_row in range(start_segment_row, end_segment_row + 1):
-            for segment_col in range(start_segment_column, end_segment_column + 1):
-                start_row = max(
-                    segment_row * segment_h,
-                    row
-                )
-                start_col = max(
-                    segment_col * segment_w,
-                    col
-                )
+        # CHANGE: read only required bytes instead of whole segments
+        file_path = os.path.join(self._data_dir, self._file_name)
+        with open(file_path, "rb", buffering=0) as f:
+            fd = f.fileno()
 
-                end_row = min(
-                    (segment_row + 1) * segment_h,
-                    row + height
-                )
-                end_col = min(
-                    (segment_col + 1) * segment_w,
-                    col + width
-                )
-                segment = self.read_segment(segment_row, segment_col)
-                result[
-                    start_row - row : end_row - row,
-                        start_col - col : end_col - col
-                ] = segment[
-                    start_row - segment_row * segment_h : end_row - segment_row * segment_h,
-                        start_col - segment_col * segment_w : end_col - segment_col * segment_w,
-                ]
+            rows_n = metadata.rows_number
+            cols_n = metadata.columns_number
+            segments_n_vertically = math.ceil(rows_n / segment_h)
+            segments_n_horizontally = math.ceil(cols_n / segment_w)
+
+            for segment_row in range(start_segment_row, end_segment_row + 1):
+                for segment_col in range(start_segment_column, end_segment_column + 1):
+                    start_row = max(segment_row * segment_h, row)
+                    start_col = max(segment_col * segment_w, col)
+
+                    end_row = min((segment_row + 1) * segment_h, row + height)
+                    end_col = min((segment_col + 1) * segment_w, col + width)
+
+                    # local coords inside segment
+                    local_y0 = start_row - segment_row * segment_h
+                    local_y1 = end_row - segment_row * segment_h
+                    local_x0 = start_col - segment_col * segment_w
+                    local_x1 = end_col - segment_col * segment_w
+
+                    local_h = local_y1 - local_y0
+                    local_w = local_x1 - local_x0
+                    if local_h <= 0 or local_w <= 0:
+                        continue
+
+                    # actual stored segment shape (last row/col can be smaller)
+                    seg_h_cur = segment_h
+                    if segment_row == segments_n_vertically - 1:
+                        seg_h_cur = rows_n % segment_h or segment_h
+
+                    seg_w_cur = segment_w
+                    if segment_col == segments_n_horizontally - 1:
+                        seg_w_cur = cols_n % segment_w or segment_w
+
+                    # base byte offset of the segment in file
+                    seg_base = self._coords_to_file_position(segment_row, segment_col)
+
+                    # read exact rectangle row-by-row (minimizes disk bytes)
+                    bytes_per_row = local_w * third * SINGLE_CELL_SIZE
+                    out_block = np.empty((local_h, local_w, third), dtype=np.float32)
+
+                    for i in range(local_h):
+                        seg_r = local_y0 + i
+                        # offset inside segment (row-major within segment)
+                        byte_off = seg_base + ((seg_r * seg_w_cur + local_x0) * third * SINGLE_CELL_SIZE)
+                        chunk = os.pread(fd, bytes_per_row, byte_off)
+                        if len(chunk) != bytes_per_row:
+                            raise IOError(f"Short read while reading fragment: got {len(chunk)} bytes, expected {bytes_per_row}")
+                        out_block[i, :, :] = np.frombuffer(chunk, dtype=np.float32).reshape(local_w, third)
+
+                    # write into output
+                    result[
+                        start_row - row : end_row - row,
+                        start_col - col : end_col - col,
+                        :
+                    ] = out_block
 
         return result
-        
+    
+    def write_arbitrary_fragment_fast(self, fragment: GridType, row: int, col: int) -> None:
+        """Faster variant: writes only the required bytes (no full-segment read/overwrite)."""
+        height, width = fragment.shape[0], fragment.shape[1]
+        assert height > 0 and width > 0
+        assert row + height <= self._metadata.rows_number
+        assert col + width <= self._metadata.columns_number
+
+        metadata = self._metadata
+        segment_h, segment_w = metadata.segment_h, metadata.segment_w
+        third = metadata.third_dimension_size
+
+        start_segment_row = row // segment_h
+        start_segment_column = col // segment_w
+        end_segment_row = (row + height - 1) // segment_h
+        end_segment_column = (col + width - 1) // segment_w
+
+        rows_n = metadata.rows_number
+        cols_n = metadata.columns_number
+        segments_n_horizontally = math.ceil(cols_n / segment_w)
+
+        file_path = os.path.join(self._data_dir, self._file_name)
+        with open(file_path, "rb+", buffering=0) as f:
+            fd = f.fileno()
+
+            for segment_row in range(start_segment_row, end_segment_row + 1):
+                for segment_col in range(start_segment_column, end_segment_column + 1):
+                    start_row = max(segment_row * segment_h, row)
+                    start_col = max(segment_col * segment_w, col)
+                    end_row = min((segment_row + 1) * segment_h, row + height)
+                    end_col = min((segment_col + 1) * segment_w, col + width)
+
+                    local_y0 = start_row - segment_row * segment_h
+                    local_x0 = start_col - segment_col * segment_w
+                    local_h = end_row - start_row
+                    local_w = end_col - start_col
+                    if local_h <= 0 or local_w <= 0:
+                        continue
+
+                    # width of the stored segment (last column can be smaller)
+                    seg_w_cur = segment_w
+                    if segment_col == segments_n_horizontally - 1:
+                        seg_w_cur = cols_n % segment_w or segment_w
+
+                    seg_base = self._coords_to_file_position(segment_row, segment_col)
+
+                    bytes_per_row = local_w * third * SINGLE_CELL_SIZE
+
+                    # write rectangle row-by-row
+                    for i in range(local_h):
+                        seg_r = local_y0 + i
+                        byte_off = seg_base + ((seg_r * seg_w_cur + local_x0) * third * SINGLE_CELL_SIZE)
+
+                        src_row = (start_row - row) + i
+                        src_col0 = (start_col - col)
+                        src = fragment[src_row, src_col0:src_col0 + local_w, :].astype(np.float32, copy=False)
+
+                        written = os.pwrite(fd, src.tobytes(order="C"), byte_off)
+                        if written != bytes_per_row:
+                            raise IOError(f"Short write: wrote {written} bytes, expected {bytes_per_row}")
+
     def write_arbitrary_fragment(self, fragment: GridType, row: int, col: int) -> None:
         
         height, width = fragment.shape[0], fragment.shape[1]
@@ -168,8 +263,8 @@ class GridManager(Generic[GridType]):
 
         start_segment_row = row // segment_h
         start_segment_column = col // segment_w
-        end_segment_row = (row + height) // segment_h
-        end_segment_column = (col + width) // segment_w
+        end_segment_row = (row + height - 1) // segment_h
+        end_segment_column = (col + width - 1) // segment_w
 
         for segment_row in range(start_segment_row, end_segment_row + 1):
             for segment_col in range(start_segment_column, end_segment_column + 1):
