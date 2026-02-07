@@ -249,7 +249,7 @@ class ClippingModel(Model):
                 for layer_i in range(len(layers)):
                     output_clipping[:, :, layer_i] = layers[layer_i][0, :, :, 0]
 
-                result.write_arbitrary_fragment(output_clipping, row, col)
+                result.write_arbitrary_fragment_fast(output_clipping, row, col)
                 print(".", end="")
 
         return result
