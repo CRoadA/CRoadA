@@ -64,7 +64,7 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         surplus_border = int(input_surplus / 2)
 
         # Determine random clipping position within the cut grid
-        max_x = cut.shape[1] - clipping_size + surplus_border # + (input_surplus / 2), because cut_from_cutsubtracts clipping surplus
+        max_x = cut.shape[1] - clipping_size + surplus_border # + (input_surplus / 2), because cut_from_cut subtracts clipping surplus
         max_y = cut.shape[0] - clipping_size + surplus_border
 
         clipping_x = random.randint(surplus_border, max_x)
@@ -129,6 +129,15 @@ def clipping_sample_generator(grid_managers: list[GridManager], cut_sizes: list[
         # Yield the input-output pair - TensorFlow will handle batching
         yield x, output
 
+        # output = [
+        #     output_clipping[:, :, [PREDICT_GRID_INDICES.IS_STREET]].astype(np.float32) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        # ]
+        # if output_third_dimension >= 2:
+        #     output.append(output_clipping[:, :, [PREDICT_GRID_INDICES.ALTITUDE]].astype(np.float32)) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        # if output_third_dimension >= 3:
+        #     output.append(output_clipping[:, :, [PREDICT_GRID_INDICES.IS_RESIDENTIAL]].astype(np.float32)) # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+        # yield x, output
+
 def generate_cut(grid_manager: GridManager[Grid], cut_size: tuple[int, int]) -> tuple[tuple[int, int], np.ndarray]:
     """Get the next random cut (part of a batch item) from the file (a batch item == multiple cuts)."""
     grid_metadata = grid_manager.get_metadata()
@@ -156,15 +165,7 @@ def generate_cut(grid_manager: GridManager[Grid], cut_size: tuple[int, int]) -> 
 
     # append the IS_PREDICTED channel
     result = np.zeros((cut_h, cut_w, cut.shape[2] + 1), dtype=np.float32)
-    result[:, :, [
-        TRAINING_GRID_INDICES.IS_STREET,
-        TRAINING_GRID_INDICES.ALTITUDE,
-        TRAINING_GRID_INDICES.IS_RESIDENTIAL
-    ]] = cut[:, :, [
-        GRID_INDICES.IS_STREET,
-        GRID_INDICES.ALTITUDE,
-        GRID_INDICES.IS_RESIDENTIAL
-    ]]
+    result[:, :, 1:] = cut[:, :, :]
 
     # Return the cut starting position and the cut grid manager
     return ((cut_start_x, cut_start_y), result)
