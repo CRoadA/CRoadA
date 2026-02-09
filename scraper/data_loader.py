@@ -1,4 +1,5 @@
 from grid_manager import GridManager
+
 try:
     from scraper.grid_builder import GridBuilder
     from scraper.rasterizer import Rasterizer
@@ -15,11 +16,12 @@ import shapely
 
 from shapely import Polygon
 from geopy.geocoders import Nominatim
-from unidecode import unidecode 
+from unidecode import unidecode
 from collections.abc import Callable
 from scraper.locator import Locator
 
-class DataLoader():
+
+class DataLoader:
     grid_density: float
     segment_h: int
     segment_w: int
@@ -37,8 +39,9 @@ class DataLoader():
         self.segment_w = segment_w
         self.data_dir = data_dir
 
-
-    def load_city_grid(self, city: str | Polygon, file_name: str, on_progress : Callable[[float | None, str], None] | None = None) -> GridManager:
+    def load_city_grid(
+        self, city: str | Polygon, file_name: str, on_progress: Callable[[float | None, str], None] | None = None
+    ) -> GridManager:
         """Load city grid to a given file.
         Args:
             city (str): String for identification of the city (OSM-like) or (Polygon): Polygon for the city area.
@@ -47,11 +50,11 @@ class DataLoader():
             grid_manager (GridManager): Object handling partial load/write to the specified file.
         Raises:
             FileExistsError: if file with specified name already exists.
-            """
+        """
 
         if os.path.exists(os.path.join(self.data_dir, file_name)):
             raise FileExistsError(f"File: {file_name} already exists in {self.data_dir} directory")
-        
+
         if on_progress:
             on_progress(None, "Getting roads data.")
 
@@ -65,18 +68,31 @@ class DataLoader():
         segment_rows = math.ceil((rows_number) / self.segment_h)
         segment_cols = math.ceil((columns_number) / self.segment_w)
 
-        grid_manager = GridManager(file_name, rows_number=int(rows_number), columns_number=int(columns_number),
-                                   grid_density=self.grid_density, segment_h=self.segment_h, segment_w=self.segment_w,
-                                   data_dir=self.data_dir, upper_left_longitude=min_x, upper_left_latitude=max_y)
+        grid_manager = GridManager(
+            file_name,
+            rows_number=int(rows_number),
+            columns_number=int(columns_number),
+            grid_density=self.grid_density,
+            segment_h=self.segment_h,
+            segment_w=self.segment_w,
+            data_dir=self.data_dir,
+            upper_left_longitude=min_x,
+            upper_left_latitude=max_y,
+        )
         print(f"Height: {int(rows_number)}, Width: {int(columns_number)}, rows: {segment_rows}, cols: {segment_cols}")
-        
+
         processed_segments = 0
         rasterizer = Rasterizer()
         for i in range(segment_rows):
             for j in range(segment_cols):
-                grid_2d = rasterizer.rasterize_segment_from_indexes(gdf_edges=gdf_edges, indexes=(i, j), is_residential=False,
-                                                                    size_h=self.segment_h, size_w=self.segment_w,
-                                                                    pixel_size=self.grid_density)
+                grid_2d = rasterizer.rasterize_segment_from_indexes(
+                    gdf_edges=gdf_edges,
+                    indexes=(i, j),
+                    is_residential=False,
+                    size_h=self.segment_h,
+                    size_w=self.segment_w,
+                    pixel_size=self.grid_density,
+                )
 
                 expected_h = self.segment_h
                 if i == segment_rows - 1:
@@ -95,21 +111,23 @@ class DataLoader():
                 grid_3d[0:copy_h, 0:copy_w, 0] = grid_2d[0:copy_h, 0:copy_w]
 
                 print(
-                    f"Segment: {i}, {j} -> Expected: {expected_h}x{expected_w}, Got: {src_h}x{src_w}, Saved: {grid_3d.shape}")
+                    f"Segment: {i}, {j} -> Expected: {expected_h}x{expected_w}, Got: {src_h}x{src_w}, Saved: {grid_3d.shape}"
+                )
                 grid_manager.write_segment(grid_3d, i, j)
 
                 processed_segments += 1
                 if on_progress:
-                    on_progress(processed_segments/(segment_cols*segment_rows), "Saving area")
+                    on_progress(processed_segments / (segment_cols * segment_rows), "Saving area")
 
         if on_progress:
             on_progress(None, "Marked area has been saved successfully")
 
         return grid_manager
-    
 
-
-    def add_elevation_to_grid(self, grid_manager: GridManager, on_progress : Callable[[float | None, str], None] | None = None):
+    @staticmethod
+    def add_elevation_to_grid(
+        grid_manager: GridManager, on_progress: Callable[[float | None, str], None] | None = None
+    ):
         """
         Enriches the existing grid with elevation data retrieved from NASA SRTM.
         """
@@ -124,8 +142,10 @@ class DataLoader():
         transformer = None
 
         if is_metric:
-            print(f"Metric coordinates detected (X={meta.upper_left_longitude:.2f}). "
-                  f"Initializing EPSG:32634 -> EPSG:4326 transformer.")
+            print(
+                f"Metric coordinates detected (X={meta.upper_left_longitude:.2f}). "
+                f"Initializing EPSG:32634 -> EPSG:4326 transformer."
+            )
             transformer = Transformer.from_crs("EPSG:32634", "EPSG:4326", always_xy=True)
         else:
             print("Geographic coordinates detected. No conversion required.")
@@ -158,7 +178,7 @@ class DataLoader():
                         else:
                             lon, lat = current_x_map, current_y_map
 
-                        segment[y, x, 1] = self._get_altitude_source(lat, lon, geo_data)
+                        segment[y, x, 1] = DataLoader._get_altitude_source(lat, lon, geo_data)
 
                 grid_manager.write_segment(segment, row_idx, col_idx)
 
@@ -167,8 +187,10 @@ class DataLoader():
         if on_progress:
             on_progress(None, "Elevation was added successfully.")
 
-
-    def add_residential_to_grid(self, grid_manager : GridManager, city_name: str, on_progress : Callable[[float | None, str], None] | None = None):
+    @staticmethod
+    def add_residential_to_grid(
+        grid_manager: GridManager, city_name: str, on_progress: Callable[[float | None, str], None] | None = None
+    ):
         """
         Enriches the existing grid with is_residential information.
         """
@@ -179,12 +201,11 @@ class DataLoader():
         gdf_edges = builder.get_city_roads(city_name, residential_max_radius=30)
         gdf_residentials = gdf_edges[gdf_edges["is_residential"]]
 
-
         segments_rows = math.ceil(meta.rows_number / meta.segment_h)
         segments_cols = math.ceil(meta.columns_number / meta.segment_w)
 
         if on_progress:
-            on_progress(None, 'Processing roads to classify if it\'s a residential street.')
+            on_progress(None, "Processing roads to classify if it's a residential street.")
 
         print(f"Processing is_residential for {segments_rows}x{segments_cols} segments...")
 
@@ -192,23 +213,38 @@ class DataLoader():
             for col_idx in range(segments_cols):
                 segment = grid_manager.read_segment(row_idx, col_idx)
 
-                is_residential_grid = rasterizer.rasterize_segment_from_indexes(gdf_edges, indexes=(row_idx, col_idx), size_w=meta.segment_w, size_h=meta.segment_h, is_residential=True, pixel_size=meta.grid_density)
+                is_residential_grid = rasterizer.rasterize_segment_from_indexes(
+                    gdf_edges,
+                    indexes=(row_idx, col_idx),
+                    size_w=meta.segment_w,
+                    size_h=meta.segment_h,
+                    is_residential=True,
+                    pixel_size=meta.grid_density,
+                )
                 segment[:, :, 2] = is_residential_grid
 
                 grid_manager.write_segment(segment, row_idx, col_idx)
 
-                (min_coords, max_coords) = geometry_processor.get_segment_coordinates(gdf_edges, indexes=(row_idx, col_idx), size_w=meta.segment_w, size_h=meta.segment_h, pixel_size=meta.grid_density)
+                (min_coords, max_coords) = geometry_processor.get_segment_coordinates(
+                    gdf_edges,
+                    indexes=(row_idx, col_idx),
+                    size_w=meta.segment_w,
+                    size_h=meta.segment_h,
+                    pixel_size=meta.grid_density,
+                )
                 bounds = shapely.geometry.box(min_coords[0], min_coords[1], max_coords[0], max_coords[1])
                 gdf_segment = gdf_edges.clip(bounds)
-                gdf_segment_residential = gdf_residentials.clip(bounds) 
+                gdf_segment_residential = gdf_residentials.clip(bounds)
 
-                print(f"Segment [{row_idx}, {col_idx}] saved. Number of residential streets: {len(gdf_segment_residential)}, number of non residential streets: {len(gdf_segment) - len(gdf_segment_residential)}")
+                print(
+                    f"Segment [{row_idx}, {col_idx}] saved. Number of residential streets: {len(gdf_segment_residential)}, number of non residential streets: {len(gdf_segment) - len(gdf_segment_residential)}"
+                )
 
         if on_progress:
             on_progress(None, "is_residential flag was added successfully.")
 
-
-    def _get_altitude_source(self, lat: float, lon: float, geo_data=None) -> float:
+    @staticmethod
+    def _get_altitude_source(lat: float, lon: float, geo_data=None) -> float:
         """
         Safely retrieves elevation from the SRTM data source.
         """

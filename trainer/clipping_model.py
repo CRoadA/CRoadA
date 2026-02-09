@@ -5,6 +5,7 @@ import os.path
 from enum import Enum
 import tensorflow as tf
 from tensorflow.keras import mixed_precision
+
 mixed_precision.set_global_policy("mixed_float16")
 
 Sequence = tf.keras.utils.Sequence
@@ -17,24 +18,37 @@ from trainer.model_architectures import *
 
 THIRD_DIMENSION = 3  # IS_STREET, ALTITUDE, IS_MODIFIABLE
 
+
 class ClipModels(Enum):
     BASE = "base_clipping_model"
     UNET = "unet"
     ALEX_INSPIRED = "alex_inspired"
     SHALLOWED_UNET = "shallowed_unet"
 
+
 clip_models = {
     ClipModels.BASE: base_clipping_model,
     ClipModels.UNET: unet,
     ClipModels.ALEX_INSPIRED: alex_inspired,
-    ClipModels.SHALLOWED_UNET: test_clipping_model_shallowed_unet
+    ClipModels.SHALLOWED_UNET: test_clipping_model_shallowed_unet,
 }
 
+
 class ClippingModel(Model):
-    def __init__(self, model_type: ClipModels, clipping_size: int = 512, clipping_surplus: int = 64, input_third_dimension: int = 3, output_third_dimension: int = 2, weights: list[int] = [10, 1, 10], path: str | None = None, **kwargs):
+    def __init__(
+        self,
+        model_type: ClipModels,
+        clipping_size: int = 512,
+        clipping_surplus: int = 64,
+        input_third_dimension: int = 3,
+        output_third_dimension: int = 2,
+        weights: list[int] = [10, 1, 10],
+        path: str | None = None,
+        **kwargs,
+    ):
         """
         Initializes the ClippingModel with specified clipping size and surplus.
-        
+
         :param clipping_size: Size of the clipping for input grids.
         :type clipping_size: int
         :param clipping_surplus: Surplus size of the input grid compared to the output grid; output grid will be smaller than clipping_size by this amount.
@@ -50,20 +64,20 @@ class ClippingModel(Model):
         self.output_third_dimension = output_third_dimension
 
         files = [f for f in os.listdir(self._dir) if os.path.isfile(os.path.join(self._dir, f))]
-        if len(files) == 0: # if no model exists in the path
+        if len(files) == 0:  # if no model exists in the path
             # Model architecture here
-            self._keras_model = clip_models[model_type](clipping_size=self._clipping_size, clipping_surplus=self._clipping_surplus, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension, **kwargs) # TODO - without IS_RESIDENTIAL (third dimension = 3)
+            self._keras_model = clip_models[model_type](
+                clipping_size=self._clipping_size,
+                clipping_surplus=self._clipping_surplus,
+                input_third_dimension=self.input_third_dimension,
+                output_third_dimension=self.output_third_dimension,
+                **kwargs,
+            )  # TODO - without IS_RESIDENTIAL (third dimension = 3)
 
             # Compile the model
-            loss = {
-                "is_street": "binary_crossentropy"
-            }
-            loss_weights = {
-                "is_street": weights[0]
-            }
-            metrics = {
-                "is_street": ["accuracy"]
-            }
+            loss = {"is_street": "binary_crossentropy"}
+            loss_weights = {"is_street": weights[0]}
+            metrics = {"is_street": ["accuracy"]}
 
             if output_third_dimension >= 2:
                 loss["altitude"] = "mse"
@@ -74,19 +88,24 @@ class ClippingModel(Model):
                 loss_weights["is_residential"] = weights[2]
                 metrics["is_residential"] = "accuracy"
 
-            self._keras_model.compile(
-                optimizer="adam",
-                loss=loss,
-                loss_weights=loss_weights,
-                metrics=metrics
-            )
+            self._keras_model.compile(optimizer="adam", loss=loss, loss_weights=loss_weights, metrics=metrics)
         else:
             files.sort(key=lambda file: file.split("_")[0])
             start_file = os.path.join(self._dir, files[-1])
             print(f"Starting from file: {start_file}")
             self._keras_model = tf.keras.models.load_model(start_file)
 
-    def fit(self, train_files: list[GridManager[Grid]], val_files: list[GridManager[Grid]], cut_sizes: list[tuple[int, int]], clipping_size: int, input_surplus: int, batch_size: int, epochs: int = 1, steps_per_epoch: int = 1000):
+    def fit(
+        self,
+        train_files: list[GridManager[Grid]],
+        val_files: list[GridManager[Grid]],
+        cut_sizes: list[tuple[int, int]],
+        clipping_size: int,
+        input_surplus: int,
+        batch_size: int,
+        epochs: int = 1,
+        steps_per_epoch: int = 1000,
+    ):
         """Fit model to the given data.
 
         Parameters
@@ -109,16 +128,38 @@ class ClippingModel(Model):
             Number of steps per epoch, by default 1000
         """
         # Create TensorFlow datasets for training and validation
-        train_dataset = get_tf_dataset(train_files, cut_sizes, clipping_size, input_surplus, batch_size, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension)
+        train_dataset = get_tf_dataset(
+            train_files,
+            cut_sizes,
+            clipping_size,
+            input_surplus,
+            batch_size,
+            input_third_dimension=self.input_third_dimension,
+            output_third_dimension=self.output_third_dimension,
+        )
 
-        val_dataset = get_tf_dataset(val_files, cut_sizes, clipping_size, input_surplus, batch_size, input_third_dimension=self.input_third_dimension, output_third_dimension=self.output_third_dimension)
+        val_dataset = get_tf_dataset(
+            val_files,
+            cut_sizes,
+            clipping_size,
+            input_surplus,
+            batch_size,
+            input_third_dimension=self.input_third_dimension,
+            output_third_dimension=self.output_third_dimension,
+        )
         # Fit the model using the datasets
-        self._keras_model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1)
+        self._keras_model.fit(
+            train_dataset,
+            validation_data=val_dataset,
+            epochs=epochs,
+            steps_per_epoch=steps_per_epoch,
+            validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1,
+        )
 
     def predict(self, input: GridManager[InputGrid]) -> GridManager[OutputGrid]:
 
         print(f"DEBUG: input.third_dimension_size: {input.get_metadata().third_dimension_size}")
-        
+
         input_metadata = input.get_metadata()
 
         # FIX 1: avoid SyntaxError from nested quotes; keep filename stable
@@ -133,12 +174,13 @@ class ClippingModel(Model):
             result_filename,
             input_metadata.rows_number - self._clipping_surplus,
             input_metadata.columns_number - self._clipping_surplus,
-            0,0,
+            0,
+            0,
             input_metadata.grid_density,
             input_metadata.segment_h,
             input_metadata.segment_w,
             os.path.join("tmp", "predictions"),
-            self.output_third_dimension
+            self.output_third_dimension,
         )
         result_metadata = result.get_metadata()
         result_h, result_w = result_metadata.rows_number, result_metadata.columns_number
@@ -146,7 +188,9 @@ class ClippingModel(Model):
         output_clipping_size = self._clipping_size - self._clipping_surplus
         feedback_third_dimension = min(self.input_third_dimension - 1, self.output_third_dimension)
 
-        top_neighbors = np.zeros((self._clipping_surplus // 2, output_clipping_size + self._clipping_surplus, self.input_third_dimension))
+        top_neighbors = np.zeros(
+            (self._clipping_surplus // 2, output_clipping_size + self._clipping_surplus, self.input_third_dimension)
+        )
         for row in range(0, result_h, output_clipping_size):
             print(f"\nrow: {row // output_clipping_size}", end="")
 
@@ -155,26 +199,24 @@ class ClippingModel(Model):
 
             # Prepare top neighbors
             top_neighbors[:, :, :] = input.read_arbitrary_fragment(
-                row, 0, # no neeed to shift anyhow, because input is already shifted by clipping_surplus in the upper direction
+                row,
+                0,  # no neeed to shift anyhow, because input is already shifted by clipping_surplus in the upper direction
                 self._clipping_surplus // 2,
-                output_clipping_size + self._clipping_surplus
-            )# [:, :, :]
+                output_clipping_size + self._clipping_surplus,
+            )  # [:, :, :]
 
             if row > 0:
                 already_predicted_context_height = min(
-                    self._clipping_surplus // 2,
-                    row
-                ) # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
-                top_neighbors[
-                    -already_predicted_context_height:,
-                    :,
-                    1:feedback_third_dimension + 1
-                ] = result.read_arbitrary_fragment(
-                    row - already_predicted_context_height,
-                    0,
-                    already_predicted_context_height,
-                    output_clipping_size + self._clipping_surplus
-                )[:, :, :feedback_third_dimension]
+                    self._clipping_surplus // 2, row
+                )  # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
+                top_neighbors[-already_predicted_context_height:, :, 1 : feedback_third_dimension + 1] = (
+                    result.read_arbitrary_fragment(
+                        row - already_predicted_context_height,
+                        0,
+                        already_predicted_context_height,
+                        output_clipping_size + self._clipping_surplus,
+                    )[:, :, :feedback_third_dimension]
+                )
 
             for col in range(0, result_w, output_clipping_size):
 
@@ -183,10 +225,7 @@ class ClippingModel(Model):
 
                 # input_clipping = np.ones((self._clipping_size, self._clipping_size, self.input_third_dimension))
                 input_clipping = input.read_arbitrary_fragment(
-                    row,
-                    col,
-                    self._clipping_size,
-                    self._clipping_size
+                    row, col, self._clipping_size, self._clipping_size
                 ).astype(np.float32)
 
                 # FIX 2: enforce your assumption "IS_PREDICTED = 1 everywhere by default"
@@ -196,38 +235,30 @@ class ClippingModel(Model):
                 # Left Neighbor
                 if col > 0:
                     already_predicted_context_width = min(
-                        self._clipping_surplus // 2,
-                        col
-                    ) # it can happen, that the second column is already partial and there won't be a full clipping_surplus ready left hand side of it
+                        self._clipping_surplus // 2, col
+                    )  # it can happen, that the second column is already partial and there won't be a full clipping_surplus ready left hand side of it
                     crop = self._clipping_surplus // 2
                     y0, y1 = crop, self._clipping_size - crop
                     x0, x1 = crop - already_predicted_context_width, crop
 
-                    input_clipping[
-                        y0:y1,
-                        x0:x1,
-                        1:feedback_third_dimension + 1
-                    ] = result.read_arbitrary_fragment(
+                    input_clipping[y0:y1, x0:x1, 1 : feedback_third_dimension + 1] = result.read_arbitrary_fragment(
                         row,
                         col - already_predicted_context_width,
                         output_clipping_size,
-                        already_predicted_context_width
+                        already_predicted_context_width,
                     )[:, :, :feedback_third_dimension]
 
                     # Do NOT clean injected stripe
                     input_clipping[y0:y1, x0:x1, 0] = 0.0
-                
+
                 # Top neighbors
                 if row > 0:
                     already_predicted_context_height = min(
-                        self._clipping_surplus // 2,
-                        row
-                    ) # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
-                    input_clipping[
-                        :already_predicted_context_height,
-                        :,
-                        :
-                    ] = top_neighbors[-already_predicted_context_height:]
+                        self._clipping_surplus // 2, row
+                    )  # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
+                    input_clipping[:already_predicted_context_height, :, :] = top_neighbors[
+                        -already_predicted_context_height:
+                    ]
 
                     # Do NOT clean injected top stripe
                     input_clipping[:already_predicted_context_height, :, 0] = 0.0
@@ -235,17 +266,10 @@ class ClippingModel(Model):
                 # Clean input
                 # Clean only where IS_PREDICTED == 1
                 x = Model.clean_input(input_clipping, self.input_third_dimension)
-                #Predict
-                # output_clipping = self._keras_model.predict(tf.expand_dims(x, axis=0))
+
                 layers = list(self._keras_model(tf.expand_dims(x, axis=0)).values())
 
-                # print("layers: ", layers)
-
-                output_clipping = np.zeros((
-                    output_clipping_size,
-                    output_clipping_size,
-                    self.output_third_dimension
-                ))
+                output_clipping = np.zeros((output_clipping_size, output_clipping_size, self.output_third_dimension))
                 for layer_i in range(len(layers)):
                     output_clipping[:, :, layer_i] = layers[layer_i][0, :, :, 0]
 
@@ -253,47 +277,14 @@ class ClippingModel(Model):
                 print(".", end="")
 
         return result
-    
+
     def assign_output_to_input(self, input_array: InputGrid, output_array: OutputGrid):
         third_dimension = min(self.input_third_dimension, self.output_third_dimension)
-        input_array[:, :, 1:third_dimension + 1] = output_array[:, :, :third_dimension]
+        input_array[:, :, 1 : third_dimension + 1] = output_array[:, :, :third_dimension]
 
     def assign_input_to_output(self, output_array: OutputGrid, input_array: InputGrid):
         third_dimension = min(self.input_third_dimension, self.output_third_dimension)
-        output_array[:, :, :third_dimension] = input_array[:, :, 1:third_dimension + 1]
-
-
-
-    # def predict(self, input: GridManager[InputGrid]) -> list[GridManager[OutputGrid]]:
-    #     """Predicts grid for given input.
-
-    #     Parameters
-    #     ----------
-    #     input : GridManager[InputGrid]
-    #         Input grid manager with input grids.
-
-    #     Returns
-    #     -------
-    #     list[GridManager[OutputGrid]]
-    #         Predicted output grids.
-    #     """
-    #     output_grids = []
-    #     predict_sequence = PredictClippingSequence(
-    #         model=self,
-    #         grid_manager=input,
-    #         clipping_size=self._clipping_size,
-    #         input_grid_surplus=self.get_input_grid_surplus(),
-    #     )
-    #     for i in range(len(predict_sequence)):
-    #         prediction = predict_sequence[i]
-    #         # TODO - Combine predictions into a full grid manager?
-    #         prediction_grid = write_cut_to_grid_segments(
-    #             prediction, self._clipping_size, self._clipping_size, self._clipping_size,
-    #             i * self._clipping_size, i * self._clipping_size, input._file_name, "./tmp/predictions/"
-    #         )  # TODO - check if the name is sufficient
-    #         output_grids.append(prediction_grid)
-
-    #     return output_grids  # This should be combined into a single GridManager
+        output_array[:, :, :third_dimension] = input_array[:, :, 1 : third_dimension + 1]
 
     def get_input_grid_surplus(self) -> int:
         """Get the surplus size of input grid compared to output grid.
@@ -304,7 +295,7 @@ class ClippingModel(Model):
             Number of rows/columns that the output grid is smaller than the input grid.
         """
         return self._clipping_surplus
-    
+
     def get_input_clipping_size(self) -> int:
         """Get the clipping size used for input grids.
 
@@ -314,7 +305,7 @@ class ClippingModel(Model):
             Clipping size.
         """
         return self._clipping_size
-    
+
     def save(self):
         """Saves the model to the specified path.
 
@@ -326,71 +317,3 @@ class ClippingModel(Model):
         if not os.path.exists(self._dir):
             os.makedirs(self._dir)
         self._keras_model.save(os.path.join(self._dir, str(int(time()))) + "_model.keras")
-
-
-class PredictClippingSequence(Sequence): # TODO - test and modify if needed
-    """Sequence that divides input grids into batches for prediction using ClippingModel."""
-
-    def __init__(
-        self, model: ClippingModel, grid_manager: GridManager[InputGrid], clipping_size: int, input_grid_surplus: int
-    ):
-        """
-        Initializes the PredictClippingSequence used for making predictions with ClippingModel.
-        
-        :param model: ClippingModel instance for making predictions.
-        :type model: ClippingModel
-        :param grid_manager: GridManager containing input grids.
-        :type grid_manager: GridManager[InputGrid]
-        :param clipping_size: Size of the clipping for prediction.
-        :type clipping_size: int
-        :param input_grid_surplus: Surplus size of input grid compared to output grid.
-        :type input_grid_surplus: int
-        """
-        self._model = model
-        self._clipping_size = clipping_size
-        self._input_surplus = input_grid_surplus
-
-        self._grid_manager = grid_manager.deep_copy()
-        self._grid_metadata = self._grid_manager.get_metadata()
-        self._grid_rows, self._grid_cols = self._grid_metadata.rows_number, self._grid_metadata.columns_number
-        self._segment_rows, self._segment_cols = self._grid_metadata.segment_h, self._grid_metadata.segment_w
-
-    def __len__(self) -> int:
-        rows_number, cols_number = (
-            self._grid_rows - self._input_surplus,
-            self._grid_cols - self._input_surplus,
-        )
-        return math.ceil(rows_number / (self._clipping_size - self._input_surplus)) * math.ceil(
-            cols_number / (self._clipping_size - self._input_surplus)
-        )
-
-    def __getitem__(self, index: int) -> np.ndarray:
-        """
-        Get one clipped prediction from the sequence.
-        
-        :param index: Index of the clipping to retrieve.
-        :type index: int
-        :return: Clipped prediction grid.
-        :rtype: np.ndarray
-        """
-        # Calculate clipping start positions - cover the whole grid, moving by clipping size minus surplus - not to overlap and simultaneously cover all areas
-        step = self._clipping_size - self._input_surplus
-        n_cols = math.ceil((self._grid_cols - self._input_surplus) / step)
-        row = index // n_cols
-        col = index % n_cols
-        cut_start_x = (
-            col * step
-        )  # TODO - what when the surplus makes us go out of bounds - should we complete the grid with zeros?
-        cut_start_y = row * step
-
-        batch_item = cut_from_grid_segments(
-            self._grid_manager,
-            cut_start_x,
-            cut_start_y,
-            (self._clipping_size, self._clipping_size),
-            surplus=self._input_surplus,
-        )
-        batch_item = Model.clean_input(batch_item)
-        prediction = self._model._keras_model.predict(tf.expand_dims(batch_item, axis=0))
-        #self._grid_manager.write_segment(prediction[0], cut_start_y, cut_start_x) # TODO - what if clippings are smaller than segment size?
-        return prediction[0]

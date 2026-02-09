@@ -40,7 +40,8 @@ class BatchSequence(Sequence):
         # Temporarily: one batch item -> cut size from the given list
         # OTHER POSSIBILITY: one batch -> one cut size
         self._cut_sequences_per_file = [
-            CutSequence(file=self._files[i_file], cut_sizes=cut_sizes, sequence=self) for i_file in range(len(self._files))
+            CutSequence(file=self._files[i_file], cut_sizes=cut_sizes, sequence=self)
+            for i_file in range(len(self._files))
         ]  # pre-create cut sequences for each file in the batch
         # I was thinking about making each iterator correspond to a specific part (segments) of each file
         # OR about reading firstly -> random parts of one file -> CutSequence must be quite deterministic because of the fact that Keras Sequence (like ClippingBatchSequence) relies on indexing to get the next batch - not remembering state
@@ -61,7 +62,7 @@ class BatchSequence(Sequence):
             batch.append(
                 self._cut_sequences_per_file[i % len(self._files)].__getitem__(index % iter_len)
             )  # each iterator corresponds to one batch item
-            
+
         return batch
 
     def batch_size(self) -> int:
@@ -74,7 +75,12 @@ class BatchSequence(Sequence):
 
     @staticmethod
     def cut_from_grid_segments(
-        grid_manager: GridManager, cut_start_x: int, cut_start_y: int, cut_size: tuple[int, int], surplus: int = 0, clipping: bool = False
+        grid_manager: GridManager,
+        cut_start_x: int,
+        cut_start_y: int,
+        cut_size: tuple[int, int],
+        surplus: int = 0,
+        clipping: bool = False,
     ) -> np.ndarray:
         """Create a cut grid from given grid manager by reading segments. No need to worry about cut_size exceeding boundaries - it is handled inside.
 
@@ -109,18 +115,18 @@ class BatchSequence(Sequence):
             cut_start_x = int(cut_start_x * (cut_size[0] - surplus) - (surplus / 2))
             cut_start_y = int(cut_start_y * (cut_size[1] - surplus) - (surplus / 2))
         else:
-            cut_start_x = int(cut_start_x - surplus/2)
-            cut_start_y = int(cut_start_y - surplus/2)
+            cut_start_x = int(cut_start_x - surplus / 2)
+            cut_start_y = int(cut_start_y - surplus / 2)
         cut_start_x = min(cut_start_x, metadata.columns_number - cut_size[0])
         cut_start_y = min(cut_start_y, metadata.rows_number - cut_size[1])
-        
+
         # Calculate end point
         cut_end_x = min(cut_start_x + cut_size[0], metadata.columns_number)
         cut_end_y = min(cut_start_y + cut_size[1], metadata.rows_number)
 
         # Determine which segments to read
         segment_w, segment_h = metadata.segment_w, metadata.segment_h
-        
+
         # print(f"Cut from segments: start_x={cut_start_x}, start_y={cut_start_y}, end_x={cut_end_x}, end_y={cut_end_y}")  # Debug print
         # print(f"Segment size: w={segment_w}, h={segment_h}")  # Debug print
         which_segment_start_x = int(cut_start_x // segment_w)
@@ -174,7 +180,7 @@ class BatchSequence(Sequence):
     ) -> GridManager:
         """
         Write the cut grid into a new GridManager by segments.
-        
+
         :param cut: The cut grid to write.
         :type cut: np.ndarray
         :param cut_size: Size of the cut (rows, columns).
@@ -198,9 +204,11 @@ class BatchSequence(Sequence):
         cut_segment_columns = math.ceil(cut_size[1] / segment_w)  # number of segments in cut horizontally
 
         # Check if the cut grid file already exists
-        file_path = os.path.join(to_directory, f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat")
+        file_path = os.path.join(
+            to_directory, f"{from_file_path}_cut_{cut_start_x}_{cut_start_y}_{cut_size[0]}_{cut_size[1]}.dat"
+        )
         cut_grid: GridManager = None
-        
+
         if os.path.isfile(file_path):
             cut_grid = GridManager(file_path)  # load grid manager
         else:
@@ -243,7 +251,7 @@ class CutSequence(Sequence):
         :type sequence: BatchSequence
         """
         self._file_path = file
-        #sequence._files[sequence._files.index(self._file_path)] += 1  # increment count of uses # TODO - not important
+        # sequence._files[sequence._files.index(self._file_path)] += 1  # increment count of uses # TODO - not important
         self._cut_sizes = cut_sizes
 
         self._grid_manager = GridManager(self._file_path)  # load grid manager
@@ -279,10 +287,14 @@ class CutSequence(Sequence):
         self._already_used.append(((cut_start_x, cut_start_y), cut_size))
 
         # Create cut grid
-        cut = BatchSequence.cut_from_grid_segments(self._grid_manager, cut_start_x, cut_start_y, cut_size, surplus=0, clipping=False)
+        cut = BatchSequence.cut_from_grid_segments(
+            self._grid_manager, cut_start_x, cut_start_y, cut_size, surplus=0, clipping=False
+        )
 
         cut = np.copy(cut)
-        cut = np.resize(cut, (cut_size[0], cut_size[1], cut.shape[2] + 1))  # is modifiable # TODO - check IS_PREDICTED case
+        cut = np.resize(
+            cut, (cut_size[0], cut_size[1], cut.shape[2] + 1)
+        )  # is modifiable # TODO - check IS_PREDICTED case
 
         cut_grid = BatchSequence.write_cut_to_grid_segments(
             cut,
@@ -293,7 +305,7 @@ class CutSequence(Sequence):
             cut_start_y,
             self._file_path,
             "./tmp/batches/batch_sequences/cuts/",
-            InputGrid
+            InputGrid,
         )
 
         return ((cut_start_x, cut_start_y), cut_grid)
