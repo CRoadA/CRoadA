@@ -80,7 +80,7 @@ class ClippingBatchSequence(Sequence):
             clipping_x = clipping_index % clipping_cols
             clipping_y = clipping_index // clipping_cols
 
-            print("Clipping index:", clipping_index, "->", clipping_x, clipping_y) # Debug print
+            print("Clipping index:", clipping_index, "->", clipping_x, clipping_y)  # Debug print
             # Cut the clipping from the cut grid
             clipping = BatchSequence.cut_from_grid_segments(
                 cut_grid,
@@ -93,7 +93,7 @@ class ClippingBatchSequence(Sequence):
 
             # TODO - when to clean? - (w uczeniu czasem powinien dostawać nie w pełni wyczyszczone dane czy nie?)
             clipping = Model.clean_input(clipping)
-            batch_x.append(clipping[:, :, 0:2]) # TODO - without IS_RESIDENTIAL
+            batch_x.append(clipping[:, :, 0:2])  # TODO - without IS_RESIDENTIAL
             output_clipping = clipping[
                 int(self._input_surplus / 2) : self._clipping_size - int(self._input_surplus / 2),
                 int(self._input_surplus / 2) : self._clipping_size - int(self._input_surplus / 2),
@@ -102,7 +102,7 @@ class ClippingBatchSequence(Sequence):
             # TODO - adjust IS_REGIONAL value - probably we meant local, residential roads - IS_RESIDENTIAL value
             # batch_y.append(output_clipping[:, :, 0:2])  # only IS_STREET and ALTITUDE
             batch_y_is_street = output_clipping[:, :, 0:1]  # shape: (448, 448, 1)
-            batch_y_altitude = output_clipping[:, :, 1:2]   # shape: (448, 448, 1)
+            batch_y_altitude = output_clipping[:, :, 1:2]  # shape: (448, 448, 1)
             batch_y.append([batch_y_is_street, batch_y_altitude])
 
             print("Batch shapes so far:", np.stack(batch_x).shape, np.stack(batch_y).shape)  # Debug print

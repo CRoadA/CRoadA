@@ -5,8 +5,14 @@ import numpy as np
 from grid_manager import GridManager, GridType
 from trainer.model import PredictGrid
 
+
 def cut_from_grid_segments(
-    grid_manager: GridManager, cut_start_x: int, cut_start_y: int, cut_size: tuple[int, int], surplus: int = 0, clipping: bool = False
+    grid_manager: GridManager,
+    cut_start_x: int,
+    cut_start_y: int,
+    cut_size: tuple[int, int],
+    surplus: int = 0,
+    clipping: bool = False,
 ) -> np.ndarray:
     """Create a cut grid from given grid manager by reading segments. No need to worry about cut_size exceeding boundaries - it is handled inside.
 
@@ -41,18 +47,18 @@ def cut_from_grid_segments(
         cut_start_x = int(cut_start_x * (cut_size[1] - surplus) - (surplus / 2))
         cut_start_y = int(cut_start_y * (cut_size[0] - surplus) - (surplus / 2))
     else:
-        cut_start_x = int(cut_start_x - surplus/2)
-        cut_start_y = int(cut_start_y - surplus/2)
+        cut_start_x = int(cut_start_x - surplus / 2)
+        cut_start_y = int(cut_start_y - surplus / 2)
     cut_start_x = min(cut_start_x, metadata.columns_number - cut_size[1])
     cut_start_y = min(cut_start_y, metadata.rows_number - cut_size[0])
-    
+
     # Calculate end point
     cut_end_x = min(cut_start_x + cut_size[1], metadata.columns_number)
     cut_end_y = min(cut_start_y + cut_size[0], metadata.rows_number)
 
     # Determine which segments to read
     segment_w, segment_h = metadata.segment_w, metadata.segment_h
-    
+
     # print(f"Cut from segments: start_x={cut_start_x}, start_y={cut_start_y}, end_x={cut_end_x}, end_y={cut_end_y}")  # Debug print
     # print(f"Segment size: w={segment_w}, h={segment_h}")  # Debug print
     which_segment_start_x = int(cut_start_x // segment_w)
@@ -95,21 +101,19 @@ def cut_from_grid_segments(
         if indx_x == which_segment_start_x and indx_x == which_segment_end_x:
             cut_x = cut_y[:, start_x_in_seg:end_x_in_seg]
         elif indx_x == which_segment_start_x:
-            cut_x = cut_y[:, start_x_in_seg :]
+            cut_x = cut_y[:, start_x_in_seg:]
         elif indx_x == which_segment_end_x:
-            cut_x = np.hstack((cut_x, cut_y[:, : end_x_in_seg]))
+            cut_x = np.hstack((cut_x, cut_y[:, :end_x_in_seg]))
         else:
             cut_x = np.hstack((cut_x, cut_y))
 
     return cut_x
 
+
 def write_clipping_to_grid_manager(
-        grid_manager: GridManager[PredictGrid],
-        clipping: np.ndarray,
-        clipping_start_x: int,
-        clipping_start_y: int
-        ) -> None:
-    
+    grid_manager: GridManager[PredictGrid], clipping: np.ndarray, clipping_start_x: int, clipping_start_y: int
+) -> None:
+
     metadata = grid_manager.get_metadata()
     segment_w, segment_h = metadata.segment_w, metadata.segment_h
 
@@ -123,23 +127,11 @@ def write_clipping_to_grid_manager(
 
     for segment_row in range(start_segment_row, end_segment_row + 1):
         for segment_col in range(start_segment_column, end_segment_column + 1):
-            start_row = max(
-                segment_row * segment_h,
-                clipping_start_y
-            )
-            start_col = max(
-                segment_col * segment_w,
-                clipping_start_x
-            )
+            start_row = max(segment_row * segment_h, clipping_start_y)
+            start_col = max(segment_col * segment_w, clipping_start_x)
 
-            end_row = min(
-                (segment_row + 1) * segment_h,
-                clipping_start_y + clipping_h
-            )
-            end_col = min(
-                (segment_col + 1) * segment_w,
-                clipping_start_x + clipping_w
-            )
+            end_row = min((segment_row + 1) * segment_h, clipping_start_y + clipping_h)
+            end_col = min((segment_col + 1) * segment_w, clipping_start_x + clipping_w)
             grid_manager.write_segment(
                 clipping[
                     start_row - clipping_start_y : end_row - clipping_start_y,
@@ -148,7 +140,7 @@ def write_clipping_to_grid_manager(
                 segment_row,
                 segment_col,
             )
-    
+
 
 def write_cut_to_grid_segments(
     cut: np.ndarray,
@@ -163,7 +155,7 @@ def write_cut_to_grid_segments(
 ) -> GridManager:
     """
     Write the cut grid into a new GridManager by segments.
-    
+
     :param cut: The cut grid to write.
     :type cut: np.ndarray
     :param cut_size: Size of the cut (rows, columns).
@@ -188,7 +180,7 @@ def write_cut_to_grid_segments(
     file_name = f"{from_file_path}_cut_{cut_start_y}_{cut_start_x}_{cut_size[0]}_{cut_size[1]}.dat"
     file_path = os.path.join(to_directory, file_name)
     cut_grid: GridManager = None
-    
+
     if os.path.isfile(file_path):
         cut_grid = GridManager(file_name, data_dir=to_directory)  # load grid manager
     else:
@@ -216,9 +208,13 @@ def write_cut_to_grid_segments(
     return cut_grid
 
 
-
 def cut_from_cut(
-    cut_input: np.ndarray, cut_start_x: int, cut_start_y: int, cut_size: tuple[int, int], surplus: int = 0, clipping: bool = False
+    cut_input: np.ndarray,
+    cut_start_x: int,
+    cut_start_y: int,
+    cut_size: tuple[int, int],
+    surplus: int = 0,
+    clipping: bool = False,
 ) -> np.ndarray:
     """Create a cut grid from given cut grid as a numpy array. No need to worry about cut_size exceeding boundaries - it is handled inside.
 
@@ -250,16 +246,16 @@ def cut_from_cut(
         cut_start_x = int(cut_start_x * (cut_size[1] - surplus) - (surplus / 2))
         cut_start_y = int(cut_start_y * (cut_size[0] - surplus) - (surplus / 2))
     else:
-        cut_start_x = int(cut_start_x - surplus/2)
-        cut_start_y = int(cut_start_y - surplus/2)
+        cut_start_x = int(cut_start_x - surplus / 2)
+        cut_start_y = int(cut_start_y - surplus / 2)
     cut_start_x = min(cut_start_x, cut_input.shape[1] - cut_size[1])
     cut_start_y = min(cut_start_y, cut_input.shape[0] - cut_size[0])
-    
+
     # Calculate end point
     cut_end_x = min(cut_start_x + cut_size[1], cut_input.shape[1])
     cut_end_y = min(cut_start_y + cut_size[0], cut_input.shape[0])
 
     # Cut the cut
-    cut_output = cut_input[cut_start_y : cut_end_y, cut_start_x : cut_end_x]
+    cut_output = cut_input[cut_start_y:cut_end_y, cut_start_x:cut_end_x]
 
     return cut_output

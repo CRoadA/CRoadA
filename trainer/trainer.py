@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from trainer.clipping_model import ClippingModel
 
+
 @dataclass
 class Trainer:
     def __init__(self, model: ClippingModel, files: list[str]):
@@ -24,6 +25,6 @@ class Trainer:
             input_surplus=self._model.get_input_grid_surplus(),
             batch_size=batch_size,
             epochs=epochs,
-            steps_per_epoch=steps_per_epoch
+            steps_per_epoch=steps_per_epoch,
         )
         self._model.save()

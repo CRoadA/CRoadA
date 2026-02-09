@@ -13,11 +13,13 @@ import trainer.batch_sequence as batch_sequence
 InputGrid = np.ndarray[(Any, Any, 4), np.float64]
 PredictGrid = np.ndarray[(Any, Any, 3), np.float64]
 
+
 class TRAINING_GRID_INDICES:
     IS_PREDICTED = 0
     IS_STREET = GRID_INDICES.IS_STREET + 1
     ALTITUDE = GRID_INDICES.ALTITUDE + 1
     IS_RESIDENTIAL = GRID_INDICES.IS_RESIDENTIAL + 1
+
 
 class PREDICT_GRID_INDICES(GRID_INDICES):
     pass
@@ -29,7 +31,7 @@ class Model(ABC):
             self._dir = dir
         else:
             self._dir = "./models/created_at_" + str(tf.timestamp())
-        
+
         os.makedirs(self._dir, exist_ok=True)
 
     def predict(self, input: GridManager[batch_sequence.InputGrid]) -> GridManager[batch_sequence.OutputGrid]:
@@ -97,7 +99,8 @@ class Model(ABC):
         return result
 
     def _clean_output(
-        self, input: batch_sequence.InputGrid, output: batch_sequence.OutputGrid, output_third_dimension: int    ) -> batch_sequence.OutputGrid:
+        self, input: batch_sequence.InputGrid, output: batch_sequence.OutputGrid, output_third_dimension: int
+    ) -> batch_sequence.OutputGrid:
         """Cleans output grid from modifications, where IS_PREDICTED flag is off.
 
         Parameters
@@ -120,10 +123,12 @@ class Model(ABC):
                     if output_third_dimension >= 2:
                         result[row, col, GRID_INDICES.ALTITUDE] = input[row, col, TRAINING_GRID_INDICES.ALTITUDE]
                     if output_third_dimension >= 3:
-                        result[row, col, GRID_INDICES.IS_RESIDENTIAL] = input[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL]
+                        result[row, col, GRID_INDICES.IS_RESIDENTIAL] = input[
+                            row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL
+                        ]
 
         return result
-    
+
     @abstractmethod
     def save(self):
         """Saves the model to the specified path.
