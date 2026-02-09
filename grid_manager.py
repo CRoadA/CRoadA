@@ -408,10 +408,7 @@ class GridManager(Generic[GridType]):
         segments_n_vertically = math.ceil(self._metadata.rows_number / self._metadata.segment_h)
         segments_n_horizontally = math.ceil(self._metadata.columns_number / self._metadata.segment_w)
 
-        assert (segment_row, segment_col) < (
-            segments_n_vertically,
-            segments_n_horizontally,
-        ), f"Given segment is out of bound. Grid consists of {segments_n_vertically}x{segments_n_horizontally} segments, but given coordinates are ({segment_row}, {segment_col})."
+        assert segment_row < segments_n_vertically and segment_col < segments_n_horizontally, f"Given segment is out of bound. Grid consists of {segments_n_vertically}x{segments_n_horizontally} segments, but given coordinates are ({segment_row}, {segment_col})."
 
     def _coords_to_file_position(self, segment_row: int, segment_column: int) -> int:
         """Compute the absolute byte offset in the file where a given segment starts.
