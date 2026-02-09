@@ -114,8 +114,8 @@ class GridManager(Generic[GridType]):
 
     def read_arbitrary_fragment(self, row: int, col: int, height: int, width: int) -> GridType:
 
-        assert row + height <= self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
-        assert col + width <= self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
+        assert row + height <= self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}, while file's rows number is {self._metadata.rows_number}"
+        assert col + width <= self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}, while file's colums number is {self._metadata.columns_number}"
         
         metadata = self._metadata
         segment_h, segment_w = metadata.segment_h, metadata.segment_w
@@ -160,8 +160,8 @@ class GridManager(Generic[GridType]):
     def write_arbitrary_fragment(self, fragment: GridType, row: int, col: int) -> None:
         
         height, width = fragment.shape[0], fragment.shape[1]
-        assert row + height <= self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}"
-        assert col + width <= self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}"
+        assert row + height <= self._metadata.rows_number, f"row + height cannot exceed number of rows of grid manager. Got row: {row}, height: {height}, while file's rows number is {self._metadata.rows_number}"
+        assert col + width <= self._metadata.columns_number, f"col + width cannot exceed number of columns of grid manager. Got col: {col}, width: {width}, while file's colums number is {self._metadata.columns_number}"
 
         metadata = self._metadata
         segment_h, segment_w = metadata.segment_h, metadata.segment_w
