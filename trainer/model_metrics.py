@@ -1,6 +1,7 @@
 import tensorflow as tf
 
 
+@tf.keras.utils.register_keras_serializable()
 def _dice_coef(y_true, y_pred, smooth=1e-6):
     """Calculate the Dice coefficient for binary segmentation."""
     y_true = tf.cast(y_true, tf.float32)
@@ -16,6 +17,7 @@ def _dice_coef(y_true, y_pred, smooth=1e-6):
     return (2.0 * intersection + smooth) / (denominator + smooth)
 
 
+@tf.keras.utils.register_keras_serializable()
 def _dice_loss(y_true, y_pred):
     """Calculate the Dice loss for binary segmentation."""
     return 1.0 - _dice_coef(y_true, y_pred)
