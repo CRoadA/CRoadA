@@ -10,11 +10,11 @@ mixed_precision.set_global_policy("mixed_float16")
 
 Sequence = tf.keras.utils.Sequence
 
-from trainer.model import Model, GRID_INDICES
+from trainer.model import Model
 from grid_manager import Grid, GridManager
 from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
-from trainer.cut_grid import cut_from_grid_segments, write_cut_to_grid_segments
 from trainer.model_architectures import *
+from trainer.model_metrics import _dice_coef, _dice_loss
 
 THIRD_DIMENSION = 3  # IS_STREET, ALTITUDE, IS_MODIFIABLE
 
@@ -72,22 +72,42 @@ class ClippingModel(Model):
                 input_third_dimension=self.input_third_dimension,
                 output_third_dimension=self.output_third_dimension,
                 **kwargs,
-            )  # TODO - without IS_RESIDENTIAL (third dimension = 3)
+            )
 
-            # Compile the model
-            loss = {"is_street": "binary_crossentropy"}
+            # Prepare loss, loss weights and metrics dictionaries based on the output_third_dimension
+
+            focal = tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25)
+
+            loss = {"is_street": lambda y_true, y_pred: focal(y_true, y_pred) + 0.5 * _dice_loss(y_true, y_pred)}
             loss_weights = {"is_street": weights[0]}
-            metrics = {"is_street": ["accuracy"]}
+            metrics = {
+                "is_street": [
+                    tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
+                    tf.keras.metrics.Precision(name="precision", thresholds=0.5),
+                    tf.keras.metrics.Recall(name="recall", thresholds=0.5),
+                    _dice_coef,
+                ]
+            }
 
             if output_third_dimension >= 2:
-                loss["altitude"] = "mse"
+                loss["altitude"] = tf.keras.losses.Huber(delta=1.0)
                 loss_weights["altitude"] = weights[1]
-                metrics["altitude"] = "mae"
-            if output_third_dimension >= 3:
-                loss["is_residential"] = "binary_crossentropy"
-                loss_weights["is_residential"] = weights[2]
-                metrics["is_residential"] = "accuracy"
+                metrics["altitude"] = [
+                    tf.keras.metrics.MeanAbsoluteError(name="mae"),
+                    tf.keras.metrics.RootMeanSquaredError(name="rmse"),
+                ]
 
+            if output_third_dimension >= 3:
+                loss["is_residential"] = lambda y_true, y_pred: focal(y_true, y_pred) + 0.5 * _dice_loss(y_true, y_pred)
+                loss_weights["is_residential"] = weights[2]
+                metrics["is_residential"] = [
+                    tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
+                    tf.keras.metrics.Precision(name="precision", thresholds=0.5),
+                    tf.keras.metrics.Recall(name="recall", thresholds=0.5),
+                    _dice_coef,
+                ]
+
+            # Compile the model
             self._keras_model.compile(optimizer="adam", loss=loss, loss_weights=loss_weights, metrics=metrics)
         else:
             files.sort(key=lambda file: file.split("_")[0])
