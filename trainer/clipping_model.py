@@ -274,10 +274,10 @@ class ClippingModel(Model):
 
                 # Clean input
                 x = input_clipping.copy()
-                x[: self._clipping_size // 2, :, 0] = 0
-                x[-self._clipping_size // 2 :, :, 0] = 0
-                x[:, : self._clipping_size // 2, 0] = 0
-                x[:, -self._clipping_size // 2 :, 0] = 0
+                x[: self._clipping_surplus // 2, :, 0] = 0
+                x[-self._clipping_surplus // 2 :, :, 0] = 0
+                x[:, : self._clipping_surplus // 2, 0] = 0
+                x[:, -self._clipping_surplus // 2 :, 0] = 0
                 x = Model.clean_input(x, self.input_third_dimension)
 
                 layers = list(self._keras_model(tf.expand_dims(x, axis=0)).values())
