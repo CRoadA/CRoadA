@@ -21,3 +21,42 @@ def _dice_coef(y_true, y_pred, smooth=1e-6):
 def _dice_loss(y_true, y_pred):
     """Calculate the Dice loss for binary segmentation."""
     return 1.0 - _dice_coef(y_true, y_pred)
+
+
+@tf.keras.utils.register_keras_serializable()
+class FocalDiceLoss(tf.keras.losses.Loss):
+    """Binary focal loss + weighted dice loss (serializable; no lambdas)."""
+
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        alpha: float = 0.25,
+        dice_weight: float = 0.5,
+        from_logits: bool = False,
+        name: str = "focal_dice_loss",
+    ):
+        super().__init__(name=name)
+        self.gamma = gamma
+        self.alpha = alpha
+        self.dice_weight = dice_weight
+        self.from_logits = from_logits
+        self._focal = tf.keras.losses.BinaryFocalCrossentropy(
+            gamma=gamma,
+            alpha=alpha,
+            from_logits=from_logits,
+        )
+
+    def call(self, y_true, y_pred):
+        return self._focal(y_true, y_pred) + self.dice_weight * _dice_loss(y_true, y_pred)
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update(
+            {
+                "gamma": self.gamma,
+                "alpha": self.alpha,
+                "dice_weight": self.dice_weight,
+                "from_logits": self.from_logits,
+            }
+        )
+        return cfg

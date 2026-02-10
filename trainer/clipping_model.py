@@ -14,7 +14,7 @@ from trainer.model import Model
 from grid_manager import Grid, GridManager
 from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
 from trainer.model_architectures import *
-from trainer.model_metrics import _dice_coef, _dice_loss
+from trainer.model_metrics import _dice_coef, _dice_loss, FocalDiceLoss
 
 THIRD_DIMENSION = 3  # IS_STREET, ALTITUDE, IS_MODIFIABLE
 
@@ -62,6 +62,44 @@ class ClippingModel(Model):
 
         self.input_third_dimension = input_third_dimension
         self.output_third_dimension = output_third_dimension
+        self._weights = weights
+
+        def _compile_model():
+            # Prepare loss, loss weights and metrics dictionaries based on the output_third_dimension
+
+            focal_dice = FocalDiceLoss(gamma=2.0, alpha=0.25, dice_weight=0.5)
+
+            loss = {"is_street": focal_dice}
+            loss_weights = {"is_street": self._weights[0]}
+            metrics = {
+                "is_street": [
+                    tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
+                    tf.keras.metrics.Precision(name="precision", thresholds=0.5),
+                    tf.keras.metrics.Recall(name="recall", thresholds=0.5),
+                    _dice_coef,
+                ]
+            }
+
+            if self.output_third_dimension >= 2:
+                loss["altitude"] = tf.keras.losses.Huber(delta=1.0)
+                loss_weights["altitude"] = self._weights[1]
+                metrics["altitude"] = [
+                    tf.keras.metrics.MeanAbsoluteError(name="mae"),
+                    tf.keras.metrics.RootMeanSquaredError(name="rmse"),
+                ]
+
+            if self.output_third_dimension >= 3:
+                loss["is_residential"] = focal_dice
+                loss_weights["is_residential"] = self._weights[2]
+                metrics["is_residential"] = [
+                    tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
+                    tf.keras.metrics.Precision(name="precision", thresholds=0.5),
+                    tf.keras.metrics.Recall(name="recall", thresholds=0.5),
+                    _dice_coef,
+                ]
+
+            # Compile the model
+            self._keras_model.compile(optimizer="adam", loss=loss, loss_weights=loss_weights, metrics=metrics)
 
         files = [f for f in os.listdir(self._dir) if os.path.isfile(os.path.join(self._dir, f))]
         if len(files) == 0:  # if no model exists in the path
@@ -73,47 +111,13 @@ class ClippingModel(Model):
                 output_third_dimension=self.output_third_dimension,
                 **kwargs,
             )
-
-            # Prepare loss, loss weights and metrics dictionaries based on the output_third_dimension
-
-            focal = tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25)
-
-            loss = {"is_street": lambda y_true, y_pred: focal(y_true, y_pred) + 0.5 * _dice_loss(y_true, y_pred)}
-            loss_weights = {"is_street": weights[0]}
-            metrics = {
-                "is_street": [
-                    tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
-                    tf.keras.metrics.Precision(name="precision", thresholds=0.5),
-                    tf.keras.metrics.Recall(name="recall", thresholds=0.5),
-                    _dice_coef,
-                ]
-            }
-
-            if output_third_dimension >= 2:
-                loss["altitude"] = tf.keras.losses.Huber(delta=1.0)
-                loss_weights["altitude"] = weights[1]
-                metrics["altitude"] = [
-                    tf.keras.metrics.MeanAbsoluteError(name="mae"),
-                    tf.keras.metrics.RootMeanSquaredError(name="rmse"),
-                ]
-
-            if output_third_dimension >= 3:
-                loss["is_residential"] = lambda y_true, y_pred: focal(y_true, y_pred) + 0.5 * _dice_loss(y_true, y_pred)
-                loss_weights["is_residential"] = weights[2]
-                metrics["is_residential"] = [
-                    tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
-                    tf.keras.metrics.Precision(name="precision", thresholds=0.5),
-                    tf.keras.metrics.Recall(name="recall", thresholds=0.5),
-                    _dice_coef,
-                ]
-
-            # Compile the model
-            self._keras_model.compile(optimizer="adam", loss=loss, loss_weights=loss_weights, metrics=metrics)
+            _compile_model()
         else:
             files.sort(key=lambda file: file.split("_")[0])
             start_file = os.path.join(self._dir, files[-1])
             print(f"Starting from file: {start_file}")
-            self._keras_model = tf.keras.models.load_model(start_file)
+            self._keras_model = tf.keras.models.load_model(start_file, compile=False)
+            _compile_model()
 
     def fit(
         self,
@@ -181,7 +185,7 @@ class ClippingModel(Model):
         print(f"DEBUG: input.third_dimension_size: {input.get_metadata().third_dimension_size}")
 
         input_metadata = input.get_metadata()
-        result_filename = f"from_{os.path.splitext(os.path.basename(input._file_name))[0]}__lat_{format(input_metadata.upper_left_latitude, ".4f").replace(".", "_")}__lon_{format(input_metadata.upper_left_longitude, ".4f").replace(".", "_")}__dim_{input_metadata.rows_number}x{input_metadata.columns_number}"
+        result_filename = f"from_{os.path.splitext(os.path.basename(input._file_name))[0]}__lat_{format(input_metadata.upper_left_latitude, '.4f').replace(".", "_")}__lon_{format(input_metadata.upper_left_longitude, '.4f').replace(".", "_")}__dim_{input_metadata.rows_number}x{input_metadata.columns_number}"
         result = GridManager(
             result_filename,
             input_metadata.rows_number - self._clipping_surplus,
