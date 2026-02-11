@@ -61,10 +61,13 @@ class ClippingModel(Model):
         self.output_third_dimension = output_third_dimension
         self._weights = weights
 
+        def get_default_focal_dice_loss():
+            return FocalDiceLoss(gamma=2.0, alpha=0.25, dice_weight=0.5)
+
         def _compile_model():
             # Prepare loss, loss weights and metrics dictionaries based on the output_third_dimension
 
-            focal_dice = FocalDiceLoss(gamma=2.0, alpha=0.25, dice_weight=0.5)
+            focal_dice = get_default_focal_dice_loss()
 
             loss = {"is_street": focal_dice}
             loss_weights = {"is_street": self._weights[0]}
@@ -115,9 +118,8 @@ class ClippingModel(Model):
             print(f"Starting from file: {start_file}")
             self._keras_model = tf.keras.models.load_model(
                 start_file, 
-                compile=False,
                 custom_objects={
-                    'FocalDiceLoss': FocalDiceLoss,
+                    'FocalDiceLoss': get_default_focal_dice_loss(),
                     '_dice_coef': _dice_coef,
                     '_dice_loss': _dice_loss
                 }
