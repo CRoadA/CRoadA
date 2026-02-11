@@ -113,8 +113,15 @@ class ClippingModel(Model):
             files.sort(key=lambda file: file.split("_")[0])
             start_file = os.path.join(self._dir, files[-1])
             print(f"Starting from file: {start_file}")
-            self._keras_model = tf.keras.models.load_model(start_file, compile=False)
-            _compile_model()
+            self._keras_model = tf.keras.models.load_model(
+                start_file, 
+                compile=False,
+                custom_objects={
+                    'FocalDiceLoss': FocalDiceLoss,
+                    '_dice_coef': _dice_coef,
+                    '_dice_loss': _dice_loss
+                }
+            )
 
     def fit(
         self,
