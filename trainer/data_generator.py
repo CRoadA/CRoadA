@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 
-from grid_manager import Grid, GridManager, GRID_INDICES
+from grid_manager import Grid, GridManager
 from trainer.cut_grid import cut_from_cut, cut_from_grid_segments
 from trainer.model import TRAINING_GRID_INDICES, PREDICT_GRID_INDICES, Model
 

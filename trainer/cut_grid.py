@@ -2,7 +2,7 @@ import math
 import os
 import numpy as np
 
-from grid_manager import GridManager, GridType
+from grid_manager import GridManager
 from trainer.model import PredictGrid
 
 

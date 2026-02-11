@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from enum import Enum
 import tensorflow as tf
 from typing import Any
 import numpy as np
@@ -8,7 +7,6 @@ import os
 Sequence = tf.keras.utils.Sequence
 
 from grid_manager import GRID_INDICES, GridManager
-import trainer.batch_sequence as batch_sequence
 
 InputGrid = np.ndarray[(Any, Any, 4), np.float64]
 PredictGrid = np.ndarray[(Any, Any, 3), np.float64]
@@ -34,7 +32,7 @@ class Model(ABC):
 
         os.makedirs(self._dir, exist_ok=True)
 
-    def predict(self, input: GridManager[batch_sequence.InputGrid]) -> GridManager[batch_sequence.OutputGrid]:
+    def predict(self, input: GridManager[InputGrid]) -> GridManager[PredictGrid]:
         """Predicts grid for given input.
 
         Parameters
@@ -49,16 +47,8 @@ class Model(ABC):
         """
         raise NotImplementedError()
 
-    def fit(self, input: batch_sequence.BatchSequence, epochs: int):
-        """Fit model to the given data.
-
-        Parameters
-        ----------
-        input : batch_sequence.BatchSequence
-            Input batch sequence. See BatchSequence type description.
-        #output : Grid
-            Expected output. Its size is equal the input size (except for the IS_PREDICTED dimension).
-        """
+    def fit(self):
+        """Fit model to the given data."""
         raise NotImplementedError()
 
     @abstractmethod
@@ -73,7 +63,7 @@ class Model(ABC):
         raise NotImplementedError()
 
     @staticmethod
-    def clean_input(input: batch_sequence.InputGrid, input_third_dimension: int) -> batch_sequence.InputGrid:
+    def clean_input(input: InputGrid, input_third_dimension: int) -> InputGrid:
         """Cleans input grid from IS_STREET data, where IS_PREDICTED flag is on.
 
         Parameters
@@ -98,9 +88,7 @@ class Model(ABC):
 
         return result
 
-    def _clean_output(
-        self, input: batch_sequence.InputGrid, output: batch_sequence.OutputGrid, output_third_dimension: int
-    ) -> batch_sequence.OutputGrid:
+    def _clean_output(self, input: InputGrid, output: PredictGrid, output_third_dimension: int) -> PredictGrid:
         """Cleans output grid from modifications, where IS_PREDICTED flag is off.
 
         Parameters

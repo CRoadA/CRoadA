@@ -1,4 +1,3 @@
-import math
 import numpy as np
 from time import time
 import os.path
@@ -7,8 +6,6 @@ import tensorflow as tf
 from tensorflow.keras import mixed_precision
 
 mixed_precision.set_global_policy("mixed_float16")
-
-Sequence = tf.keras.utils.Sequence
 
 from trainer.model import Model
 from grid_manager import Grid, GridManager
