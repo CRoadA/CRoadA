@@ -171,6 +171,25 @@ class ClippingModel(Model):
             input_third_dimension=self.input_third_dimension,
             output_third_dimension=self.output_third_dimension,
         )
+
+        callbacks = [
+            tf.keras.callbacks.EarlyStopping(
+                monitor="val_is_street__dice_coef" if self.output_third_dimension >= 2 else "val__dice_coef",
+                mode="max",
+                patience=20,
+                restore_best_weights=True,
+                verbose=1,
+            ),
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor="val_is_street__dice_coef" if self.output_third_dimension >= 2 else "val__dice_coef",
+                mode="max",
+                factor=0.5,
+                patience=7,
+                min_lr=1e-6,
+                verbose=1,
+            ),
+        ]
+
         # Fit the model using the datasets
         self._keras_model.fit(
             train_dataset,
@@ -178,6 +197,7 @@ class ClippingModel(Model):
             epochs=epochs,
             steps_per_epoch=steps_per_epoch,
             validation_steps=steps_per_epoch // 10 if steps_per_epoch >= 10 else 1,
+            callbacks=callbacks,
         )
 
     def predict(self, input: GridManager[InputGrid]) -> GridManager[OutputGrid]:
