@@ -30,7 +30,7 @@ class FocalDiceLoss(tf.keras.losses.Loss):
     def __init__(
         self,
         gamma: float = 2.0,
-        alpha: float = 0.25,
+        alpha: float = 0.75,
         dice_weight: float = 0.5,
         from_logits: bool = False,
         name: str = "focal_dice_loss",

@@ -84,12 +84,13 @@ def unet(clipping_size=512, clipping_surplus=64, input_third_dimension=4, output
 
     outputs = {}
     if output_third_dimension >= 1:
-        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_street")(c6)
+        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_street", dtype="float32")(c6)
     if output_third_dimension >= 2:
-        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="altitude")(c6)
+        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="altitude", dtype="float32")(c6)
     if output_third_dimension >= 3:
-        outputs["is_residential"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_residential")(c6)
-
+        outputs["is_residential"] = tf.keras.layers.Conv2D(
+            1, 1, activation="sigmoid", name="is_residential", dtype="float32"
+        )(c6)
     model = tf.keras.Model(inputs, outputs)
     return model
 
@@ -133,12 +134,15 @@ def alex_inspired(clipping_size=512, clipping_surplus=64, input_third_dimension=
     # Output heads
     outputs = {}
     if output_third_dimension >= 1:
-        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_street")(c18)
+        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_street", dtype="float32")(
+            c18
+        )
     if output_third_dimension >= 2:
-        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="altitude")(c18)
+        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="altitude", dtype="float32")(c18)
     if output_third_dimension >= 3:
-        outputs["is_residential"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_residential")(c18)
-
+        outputs["is_residential"] = tf.keras.layers.Conv2D(
+            1, 1, activation="sigmoid", name="is_residential", dtype="float32"
+        )(c18)
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
@@ -179,11 +183,12 @@ def test_clipping_model_shallowed_unet(
     # Output heads
     outputs = {}
     if output_third_dimension >= 1:
-        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_street")(c6)
+        outputs["is_street"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_street", dtype="float32")(c6)
     if output_third_dimension >= 2:
-        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="altitude")(c6)
+        outputs["altitude"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="altitude", dtype="float32")(c6)
     if output_third_dimension >= 3:
-        outputs["is_residential"] = tf.keras.layers.Conv2D(1, 1, activation="sigmoid", name="is_residential")(c6)
-
+        outputs["is_residential"] = tf.keras.layers.Conv2D(
+            1, 1, activation="sigmoid", name="is_residential", dtype="float32"
+        )(c6)
     model = tf.keras.Model(inputs, outputs)
     return model
