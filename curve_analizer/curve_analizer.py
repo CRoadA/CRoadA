@@ -1,125 +1,135 @@
 import osmnx as ox
 import networkx as nx
-import time
 import numpy as np
-import matplotlib.pyplot as plt
-from shapely.geometry import LineString
 import math
 import warnings
+from shapely.geometry import LineString, Point
 
-# Ignore runtime warnings (handled manually)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 class CurvatureAnalyzer:
     def __init__(self, G: nx.MultiDiGraph):
-        self.G = self._ensure_projected(G)
+        self.G = G.copy()
 
-    def _ensure_projected(self, G: nx.MultiDiGraph) -> nx.MultiDiGraph:
-        """
-        Reliably check if graph is in meters.
-        """
-        if not G.nodes:
-            return G
+        first_node = next(iter(self.G.nodes(data=True)))
+        x_val = first_node[1].get('x', 0)
 
-        if G.graph.get('crs') == 'EPSG:4326':
-            print("  [INFO] Graph CRS is EPSG:4326. Projecting to UTM...")
+        self.is_degrees = -180 < x_val < 180
+
+        if self.is_degrees:
+            print("  [Curvature] Wykryto współrzędne geograficzne (stopnie).")
             try:
-                G_proj = ox.project_graph(G)
-                return G_proj
+                self.G = ox.project_graph(self.G)
+                self.is_degrees = False
+                print("  [Curvature] Pomyślnie zrzutowano graf na metry (UTM).")
             except Exception as e:
-                print(f"  [ERROR] Failed to project graph via osmnx: {e}. Analyzing as is.")
-                return G
-
-        first_node_id = next(iter(G.nodes()))
-        x = G.nodes[first_node_id].get('x', 0)
-
-        if -180 < x < 180:
-            print("  [INFO] Coordinates in degrees detected based on values. Projecting to UTM...")
-            try:
-                G_proj = ox.project_graph(G)
-                return G_proj
-            except Exception as e:
-                print(f"  [ERROR] Failed to project graph: {e}")
-                return G
-        else:
-            print("  [INFO] Graph is likely already in metric system.")
-            return G
+                print(f"  [Curvature] Ostrzeżenie: Nie udało się zrzutować grafu ({e}).")
+                print("  [Curvature] Będę dokonywać przybliżonej konwersji stopni na metry w locie.")
 
     def _calculate_circumradius(self, p1, p2, p3):
+        """Oblicza promień okręgu opisanego na 3 punktach."""
         x1, y1 = p1
         x2, y2 = p2
         x3, y3 = p3
 
-        # Side lengths
+        # Długości boków
         a = math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
         b = math.sqrt((x2 - x3) ** 2 + (y2 - y3) ** 2)
         c = math.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
 
-        if a < 0.1 or b < 0.1 or c < 0.1:
-            return float('inf')
+        if a < 1e-9 or b < 1e-9 or c < 1e-9: return float('inf')
 
         s = (a + b + c) / 2
         area_sq = s * (s - a) * (s - b) * (s - c)
 
-        if area_sq <= 1e-12:
-            return float('inf')
-
-        area = math.sqrt(area_sq)
+        if area_sq <= 1e-16: return float('inf')
 
         try:
-            R = (a * b * c) / (4 * area)
+            R = (a * b * c) / (4 * math.sqrt(area_sq))
             return R
-        except ZeroDivisionError:
+        except (ValueError, ZeroDivisionError):
             return float('inf')
 
-    def analyze_curvature(self, max_radius=500.0):
+    def analyze_curvature(self, max_radius=1000.0):
         street_radii = []
         junction_radii = []
 
-        edges_with_geom = 0
-        for u, v, k, data in self.G.edges(keys=True, data=True):
-            if 'geometry' in data and isinstance(data['geometry'], LineString):
-                coords = list(data['geometry'].coords)
-                if len(coords) > 2:
-                    edges_with_geom += 1
-                    local_radii = []
-                    for i in range(len(coords) - 2):
-                        R = self._calculate_circumradius(coords[i], coords[i + 1], coords[i + 2])
-                        if R < max_radius:
-                            local_radii.append(R)
+        if not self.G.nodes:
+            return {'street_curvature': [], 'junction_turns': []}
 
-                    street_radii.extend(local_radii)
+        print("  [Curvature] Rozpoczynam analizę węzłów...")
 
-        # 2. Junctions
+        G_undir = self.G.to_undirected()
+
+        debug_count = 0
+
         for node in self.G.nodes():
-            in_edges = list(self.G.in_edges(node, data=True))
-            out_edges = list(self.G.out_edges(node, data=True))
+            neighbors = list(G_undir.neighbors(node))
+            if len(neighbors) < 2: continue
 
-            for u_in, _, data_in in in_edges:
-                if u_in == node: continue
+            pt_center = (self.G.nodes[node]['x'], self.G.nodes[node]['y'])
 
-                if 'geometry' in data_in and len(data_in['geometry'].coords) >= 2:
-                    pt_a = list(data_in['geometry'].coords)[-2]
-                else:
-                    pt_a = (self.G.nodes[u_in]['x'], self.G.nodes[u_in]['y'])
+            for i in range(len(neighbors)):
+                for j in range(i + 1, len(neighbors)):
+                    n1 = neighbors[i]
+                    n2 = neighbors[j]
 
-                pt_b = (self.G.nodes[node]['x'], self.G.nodes[node]['y'])
+                    LOOKAHEAD = 10.0
+                    if self.is_degrees:
+                        LOOKAHEAD = 0.00009
 
-                for _, v_out, data_out in out_edges:
-                    if v_out == node or u_in == v_out: continue
+                    pt_arm1 = self._get_interpolated_point(node, n1, distance=LOOKAHEAD)
+                    pt_arm2 = self._get_interpolated_point(node, n2, distance=LOOKAHEAD)
 
-                    if 'geometry' in data_out and len(data_out['geometry'].coords) >= 2:
-                        pt_c = list(data_out['geometry'].coords)[1]
+                    if self.is_degrees:
+                        lat_ref = pt_center[1]
+                        m_per_deg_lat = 111132.0
+                        m_per_deg_lon = 111412.0 * math.cos(math.radians(lat_ref))
+
+                        pA = ((pt_arm1[0] - pt_center[0]) * m_per_deg_lon, (pt_arm1[1] - pt_center[1]) * m_per_deg_lat)
+                        pB = (0.0, 0.0)
+                        pC = ((pt_arm2[0] - pt_center[0]) * m_per_deg_lon, (pt_arm2[1] - pt_center[1]) * m_per_deg_lat)
+
+                        R = self._calculate_circumradius(pA, pB, pC)
                     else:
-                        pt_c = (self.G.nodes[v_out]['x'], self.G.nodes[v_out]['y'])
+                        R = self._calculate_circumradius(pt_arm1, pt_center, pt_arm2)
 
-                    R = self._calculate_circumradius(pt_a, pt_b, pt_c)
+                    if R < 100 and debug_count < 3:
+                        print(f"    DEBUG: Węzeł {node}: Wykryto R = {R:.2f} m")
+                        debug_count += 1
 
-                    if R < max_radius:
-                        if self.G.degree(node) <= 2:
-                            street_radii.append(R)
-                        else:
-                            junction_radii.append(R)
+                    if self.G.degree(node) <= 2:
+                        street_radii.append(R)
+                    else:
+                        junction_radii.append(R)
 
         return {'street_curvature': street_radii, 'junction_turns': junction_radii}
+
+    def _get_interpolated_point(self, node_start, node_end, distance=10.0):
+        """Pobiera punkt na krawędzi w zadanej odległości od startu."""
+        edge_data = self.G.get_edge_data(node_start, node_end)
+        if not edge_data: edge_data = self.G.get_edge_data(node_end, node_start)
+        data = edge_data[0]
+
+        geom = data.get('geometry')
+        if not geom or not isinstance(geom, LineString):
+            p1 = (self.G.nodes[node_start]['x'], self.G.nodes[node_start]['y'])
+            p2 = (self.G.nodes[node_end]['x'], self.G.nodes[node_end]['y'])
+            geom = LineString([p1, p2])
+
+        p_start = (self.G.nodes[node_start]['x'], self.G.nodes[node_start]['y'])
+        geom_start = geom.coords[0]
+
+        dist_start = math.hypot(geom_start[0] - p_start[0], geom_start[1] - p_start[1])
+
+        used_dist = distance
+        if geom.length < distance:
+            used_dist = geom.length * 0.5
+
+        if dist_start < 1e-5:
+            pt = geom.interpolate(used_dist)
+        else:
+            pt = geom.interpolate(geom.length - used_dist)
+
+        return (pt.x, pt.y)

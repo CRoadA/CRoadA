@@ -5,8 +5,8 @@ import warnings
 import traceback
 import os
 import matplotlib.pyplot as plt
-from shapely.geometry import LineString, box, Point
-from typing import List, Tuple, Dict
+from shapely.geometry import LineString, box
+from typing import Tuple
 from skimage.morphology import remove_small_objects, binary_closing, disk
 from scipy.spatial import cKDTree
 
@@ -16,10 +16,10 @@ from graph_remaker.morphological_remaker import discover_streets
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # --- CONFIGURATION ---
-OVERLAP = 20  # Zwiększamy margines, żeby mieć pewność, że kontekst jest wystarczający
+OVERLAP = 10
 SNAP_DIST = 5.0
 MIN_SIZE = 10
-DOWNSAMPLING = 1  # Mniejszy downsampling dla większej precyzji w debugowaniu
+DOWNSAMPLING = 1
 
 DEBUG_DIR = "debug_segments"
 
@@ -35,7 +35,10 @@ class LargeGridProcessor:
             os.makedirs(DEBUG_DIR)
         else:
             for f in os.listdir(DEBUG_DIR):
-                os.remove(os.path.join(DEBUG_DIR, f))
+                try:
+                    os.remove(os.path.join(DEBUG_DIR, f))
+                except OSError:
+                    pass
 
     def run(self) -> nx.MultiDiGraph:
         rows_total = self.meta.rows_number
@@ -46,8 +49,7 @@ class LargeGridProcessor:
         n_rows = math.ceil(rows_total / seg_h)
         n_cols = math.ceil(cols_total / seg_w)
 
-        print(f"DEBUG MODE ON. Processing Grid: {rows_total}x{cols_total}. Segments: {n_rows}x{n_cols}.")
-        print(f"Check '{DEBUG_DIR}' folder for visualization of each segment processing.")
+        print(f"Processing Grid: {rows_total}x{cols_total}. Segments: {n_rows}x{n_cols}.")
 
         processed = 0
         skipped = 0
@@ -76,12 +78,7 @@ class LargeGridProcessor:
                         all_crossroads = res[0] + res[1]
                         all_streets = res[2] + res[3]
 
-                        self._debug_visualize_segment(
-                            r, c, grid, mask, all_streets, all_crossroads,
-                            offset_y, offset_x, (core_y0, core_x0, core_y1, core_x1)
-                        )
-
-                        self._add_to_graph_debug(
+                        self._add_to_graph_clipped(
                             all_crossroads,
                             all_streets,
                             global_offset_y=offset_y,
@@ -90,7 +87,7 @@ class LargeGridProcessor:
                             segment_id=(r, c)
                         )
 
-                    except Exception as e:
+                    except Exception:
                         print(f"CRITICAL ALGORITHM ERROR in segment ({r}, {c}):")
                         traceback.print_exc()
                         skipped += 1
@@ -101,64 +98,23 @@ class LargeGridProcessor:
                     skipped += 1
 
                 processed += 1
-                print(f"Processed segment ({r}, {c})")
+                if processed % 10 == 0:
+                    print(f"Processed segment ({r}, {c})...")
 
         print(f"Processing finished. Starting Snapping...")
         return self._finalize()
 
-    def _debug_visualize_segment(self, r, c, grid, mask, streets, crossroads, off_y, off_x, core_bounds):
-        """
-        Tworzy obraz PNG pokazujący co się dzieje w segmencie.
-        """
-        plt.figure(figsize=(10, 10))
-        plt.imshow(mask, cmap='gray', origin='upper')
-
-        core_y0, core_x0, core_y1, core_x1 = core_bounds
-
-        loc_y0 = core_y0 - off_y
-        loc_x0 = core_x0 - off_x
-        loc_y1 = core_y1 - off_y
-        loc_x1 = core_x1 - off_x
-
-        plt.plot([loc_x0, loc_x1, loc_x1, loc_x0, loc_x0],
-                 [loc_y0, loc_y0, loc_y1, loc_y1, loc_y0],
-                 'b-', linewidth=2, label='Core Box (Clip Limit)')
-
-        for st in streets:
-            pts = st.linestring
-            if len(pts) > 1:
-                ys = [p[0] for p in pts]
-                xs = [p[1] for p in pts]
-                plt.plot(xs, ys, 'r-', alpha=0.6, linewidth=1)
-                # Oznacz początek i koniec
-                plt.plot(xs[0], ys[0], 'r.', markersize=5)
-                plt.plot(xs[-1], ys[-1], 'r.', markersize=5)
-
-        for cr in crossroads:
-            if cr.points:
-                ys = [p[0] for p in cr.points]
-                xs = [p[1] for p in cr.points]
-                plt.plot(xs, ys, 'y.', markersize=3)
-
-        plt.title(f"Seg ({r}, {c}) | Off: y={off_y}, x={off_x} | Core: {core_y0}-{core_y1}, {core_x0}-{core_x1}")
-        plt.legend()
-        plt.savefig(os.path.join(DEBUG_DIR, f"seg_{r}_{c}.png"))
-        plt.close()
-
     def _load_super_segment(self, r, c) -> Tuple[np.ndarray, int, int]:
-
         seg_h = self.meta.segment_h
         seg_w = self.meta.segment_w
 
         global_y0 = r * seg_h
         global_x0 = c * seg_w
-        global_y1 = min(global_y0 + seg_h, self.meta.rows_number)
-        global_x1 = min(global_x0 + seg_w, self.meta.columns_number)
 
         read_y0 = max(0, global_y0 - OVERLAP)
         read_x0 = max(0, global_x0 - OVERLAP)
-        read_y1 = min(self.meta.rows_number, global_y1 + OVERLAP)
-        read_x1 = min(self.meta.columns_number, global_x1 + OVERLAP)
+        read_y1 = min(self.meta.rows_number, min(global_y0 + seg_h, self.meta.rows_number) + OVERLAP)
+        read_x1 = min(self.meta.columns_number, min(global_x0 + seg_w, self.meta.columns_number) + OVERLAP)
 
         target_h = read_y1 - read_y0
         target_w = read_x1 - read_x0
@@ -195,15 +151,13 @@ class LargeGridProcessor:
 
         return super_grid, read_y0, read_x0
 
-    def _add_to_graph_debug(self, crossroads, streets, global_offset_y, global_offset_x, clip_bounds, segment_id):
+    def _add_to_graph_clipped(self, crossroads, streets, global_offset_y, global_offset_x, clip_bounds, segment_id):
+        """Dodaje elementy do grafu przycinając je do granic segmentu (core bounds)."""
         core_y0, core_x0, core_y1, core_x1 = clip_bounds
-
         EPSILON = 0.1
         clip_box = box(core_x0 - EPSILON, core_y0 - EPSILON, core_x1 + EPSILON, core_y1 + EPSILON)
-
         point_map = {}
 
-        # --- SKRZYŻOWANIA ---
         for cr in crossroads:
             if not cr.points: continue
             ys = [p[0] for p in cr.points]
@@ -224,11 +178,11 @@ class LargeGridProcessor:
                 point_map[p] = node_id
 
         # --- ULICE ---
-        streets_added = 0
-        streets_dropped = 0
-
         for st in streets:
             if len(st.linestring) < 2: continue
+
+            slope_val = getattr(st, 'max_longitudinal_slope', 0.0)
+            width_val = getattr(st, 'width', 0.0)
 
             full_geo_points = []
             for (ly, lx) in st.linestring:
@@ -236,11 +190,9 @@ class LargeGridProcessor:
 
             full_geom = LineString(full_geo_points)
 
-            # PRZYCINANIE
             clipped = full_geom.intersection(clip_box)
 
             if clipped.is_empty:
-                streets_dropped += 1
                 continue
 
             geoms_to_process = []
@@ -253,13 +205,10 @@ class LargeGridProcessor:
                     if g.geom_type == 'LineString':
                         geoms_to_process.append(g)
 
-            if not geoms_to_process:
-                streets_dropped += 1
-
             for geom in geoms_to_process:
                 if len(geom.coords) < 2: continue
-
                 coords = list(geom.coords)
+
                 if len(coords) > 2:
                     coords = [coords[0]] + coords[1:-1:DOWNSAMPLING] + [coords[-1]]
 
@@ -282,15 +231,14 @@ class LargeGridProcessor:
                     if not self.G.has_node(v): self.G.add_node(v, y=end_y, x=end_x, type='connector')
 
                 if u != v:
-                    self.G.add_edge(u, v, geometry=LineString(coords), slope=0.0, width=0.0)
-                    streets_added += 1
-
-        print(
-            f"  > Seg {segment_id}: Raw streets: {len(streets)}. Added segments: {streets_added}. Dropped empty: {streets_dropped}")
+                    self.G.add_edge(u, v,
+                                    geometry=LineString(coords),
+                                    slope=float(slope_val),
+                                    width=float(width_val))
 
     def _finalize(self):
+        """Finalizuje graf: łączy bliskie węzły (snapping) i konwertuje na Lat/Lon."""
         if len(self.G.nodes) == 0:
-            print("WARNING: Graph is empty before finalize.")
             return self.G
 
         nodes = list(self.G.nodes(data=True))
@@ -300,9 +248,9 @@ class LargeGridProcessor:
         print(f"Snapping {len(nodes)} nodes with radius {SNAP_DIST}...")
         tree = cKDTree(coords)
         pairs = list(tree.query_pairs(r=SNAP_DIST))
-        print(f"  Found {len(pairs)} pairs to merge.")
 
         if pairs:
+            print(f"  Found {len(pairs)} pairs to merge.")
             uf = nx.utils.UnionFind()
             for i, j in pairs:
                 uf.union(ids[i], ids[j])
@@ -314,8 +262,10 @@ class LargeGridProcessor:
             for component in uf.to_sets():
                 winner_node = \
                 sorted(list(component), key=lambda n: (0 if self.G.nodes[n].get('type') == 'crossroad' else 1, n))[0]
+
                 if winner_node not in new_G:
                     new_G.add_node(winner_node, **self.G.nodes[winner_node])
+
                 for node in component:
                     winners[node] = winner_node
 
@@ -332,6 +282,7 @@ class LargeGridProcessor:
                         g_coords = list(old_geom.coords)
                         uy, ux = new_G.nodes[final_u]['y'], new_G.nodes[final_u]['x']
                         vy, vx = new_G.nodes[final_v]['y'], new_G.nodes[final_v]['x']
+
                         new_g_coords = [(ux, uy)] + g_coords[1:-1] + [(vx, vy)]
                         data['geometry'] = LineString(new_g_coords)
 
@@ -339,7 +290,6 @@ class LargeGridProcessor:
 
             self.G = new_G
 
-        # Konwersja na lat/lon
         print("Converting to Lat/Lon...")
         lat0 = self.meta.upper_left_latitude
         lon0 = self.meta.upper_left_longitude

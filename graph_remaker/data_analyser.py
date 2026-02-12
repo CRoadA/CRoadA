@@ -69,7 +69,8 @@ class DataAnalyser:
         max_steepnesses = []
         for u, v, data in G.edges(data=True):
             if 'slope' in data:
-                max_steepnesses.append(float(data['slope']))
+                val = float(data['slope'])
+                max_steepnesses.append(val)
 
         analyzer = CurvatureAnalyzer(G)
         curvature_data = analyzer.analyze_curvature(max_radius=1000.0)
