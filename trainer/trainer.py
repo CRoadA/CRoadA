@@ -15,7 +15,7 @@ class Trainer:
         self._files = files
         self._val_files = files if val_files is None else val_files
 
-    def random_fit_from_files(self, epochs: int = 100, steps_per_epoch=1000, batch_size: int = 32):
+    def random_fit_from_files(self, epochs: int = 1, steps_per_epoch=150, batch_size: int = 8):
         """Perform training on model.
         Args:
             epochs (int): Number of epochs to train.

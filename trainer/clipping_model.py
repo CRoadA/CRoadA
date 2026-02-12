@@ -35,10 +35,10 @@ class ClippingModel(Model):
     def __init__(
         self,
         model_type: ClipModels,
-        clipping_size: int = 512,
+        clipping_size: int = 256,
         clipping_surplus: int = 64,
-        input_third_dimension: int = 3,
-        output_third_dimension: int = 2,
+        input_third_dimension: int = 4,
+        output_third_dimension: int = 3,
         weights: list[int] = [10, 1, 10],
         path: str | None = None,
         **kwargs,
@@ -62,7 +62,7 @@ class ClippingModel(Model):
         self._weights = weights
 
         def get_default_focal_dice_loss():
-            return FocalDiceLoss(gamma=2.0, alpha=0.25, dice_weight=0.5)
+            return FocalDiceLoss(gamma=2.0, alpha=0.75, dice_weight=0.5)
 
         def _compile_model():
             # Prepare loss, loss weights and metrics dictionaries based on the output_third_dimension
@@ -101,9 +101,8 @@ class ClippingModel(Model):
             # Compile the model
             self._keras_model.compile(optimizer="adam", loss=loss, loss_weights=loss_weights, metrics=metrics)
 
-        files = [f for f in os.listdir(self._dir) if os.path.isfile(os.path.join(self._dir, f))]
-        if len(files) == 0:  # if no model exists in the path
-            # Model architecture here
+        self.files = [f for f in os.listdir(self._dir) if os.path.isfile(os.path.join(self._dir, f))]
+        if len(self.files) == 0:  # if no model exists in the path
             self._keras_model = clip_models[model_type](
                 clipping_size=self._clipping_size,
                 clipping_surplus=self._clipping_surplus,
@@ -113,16 +112,16 @@ class ClippingModel(Model):
             )
             _compile_model()
         else:
-            files.sort(key=lambda file: file.split("_")[0])
-            start_file = os.path.join(self._dir, files[-1])
+            self.files.sort(key=lambda file: file.split("_")[0])
+            start_file = os.path.join(self._dir, self.files[-1])
             print(f"Starting from file: {start_file}")
             self._keras_model = tf.keras.models.load_model(
-                start_file, 
+                start_file,
                 custom_objects={
-                    'FocalDiceLoss': get_default_focal_dice_loss(),
-                    '_dice_coef': _dice_coef,
-                    '_dice_loss': _dice_loss
-                }
+                    "FocalDiceLoss": get_default_focal_dice_loss(),
+                    "_dice_coef": _dice_coef,
+                    "_dice_loss": _dice_loss,
+                },
             )
 
     def fit(
@@ -194,6 +193,12 @@ class ClippingModel(Model):
                 min_lr=1e-6,
                 verbose=1,
             ),
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=os.path.join(self._dir, str(int(time())) + "_model.keras"),
+                save_weights_only=False,
+                save_best_only=False,
+                verbose=1,
+            ),
         ]
 
         # Fit the model using the datasets
@@ -207,6 +212,13 @@ class ClippingModel(Model):
         )
 
     def predict(self, input: GridManager[InputGrid]) -> GridManager[OutputGrid]:
+        """Predicts the output grid based on the input grid.
+
+        :param input: Input grid manager containing the input grid for prediction.
+        :type input: GridManager[InputGrid]
+        :return: Output grid manager containing the predicted output grid.
+        :rtype: GridManager[OutputGrid]
+        """
 
         print(f"DEBUG: input.third_dimension_size: {input.get_metadata().third_dimension_size}")
 
