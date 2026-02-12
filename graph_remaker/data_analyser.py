@@ -4,9 +4,9 @@ from shapely.geometry import mapping
 
 from grid_manager import GridManager
 from trainer.model import PredictGrid
-from graph_remaker.prediction_statistics import PredictionStatistics
-from memory_wise import LargeGridProcessor
-from curve_analizer import curve_analizer
+from .prediction_statistics import PredictionStatistics
+from .memory_wise import LargeGridProcessor
+from curve_analizer.curve_analizer import CurvatureAnalyzer
 
 
 class DataAnalyser:
@@ -71,7 +71,7 @@ class DataAnalyser:
             if 'slope' in data:
                 max_steepnesses.append(float(data['slope']))
 
-        analyzer = curve_analizer(G)
+        analyzer = CurvatureAnalyzer(G)
         curvature_data = analyzer.analyze_curvature(max_radius=1000.0)
 
         all_radii = curvature_data.get('street_curvature', []) + curvature_data.get('junction_turns', [])
