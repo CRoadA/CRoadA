@@ -7,7 +7,7 @@ from tensorflow.keras import mixed_precision
 
 mixed_precision.set_global_policy("mixed_float16")
 
-from trainer.model import Model
+from trainer.model import Model, TRAINING_GRID_INDICES, PREDICT_GRID_INDICES
 from grid_manager import Grid, GridManager
 from trainer.data_generator import InputGrid, OutputGrid, get_tf_dataset
 from trainer.model_architectures import *
@@ -214,7 +214,7 @@ class ClippingModel(Model):
             callbacks=callbacks,
         )
 
-    def predict(self, input: GridManager[InputGrid]) -> GridManager[OutputGrid]:
+    def predict(self, input: GridManager[InputGrid], debug_imgs: list[np.ndarray] = None) -> GridManager[OutputGrid]:
         """Predicts the output grid based on the input grid.
 
         :param input: Input grid manager containing the input grid for prediction.
@@ -245,35 +245,20 @@ class ClippingModel(Model):
         output_clipping_size = self._clipping_size - self._clipping_surplus
         feedback_third_dimension = min(self.input_third_dimension - 1, self.output_third_dimension)
 
-        top_neighbors = np.zeros(
-            (self._clipping_surplus // 2, output_clipping_size + self._clipping_surplus, self.input_third_dimension)
-        )
         for row in range(0, result_h, output_clipping_size):
             print(f"\nrow: {row // output_clipping_size}", end="")
 
             # last row case handling
             row = min(row, result_h - output_clipping_size)
 
-            # Prepare top neighbors
-            top_neighbors[:, :, :] = input.read_arbitrary_fragment(
-                row,
-                0,  # no neeed to shift anyhow, because input is already shifted by clipping_surplus in the upper direction
-                self._clipping_surplus // 2,
-                output_clipping_size + self._clipping_surplus,
-            )  # [:, :, :]
-
             if row > 0:
                 already_predicted_context_height = min(
                     self._clipping_surplus // 2, row
                 )  # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
-                top_neighbors[-already_predicted_context_height:, :, 1 : feedback_third_dimension + 1] = (
-                    result.read_arbitrary_fragment(
-                        row - already_predicted_context_height,
-                        0,
-                        already_predicted_context_height,
-                        output_clipping_size + self._clipping_surplus,
-                    )[:, :, :feedback_third_dimension]
-                )
+
+            # Debug
+            if debug_imgs is not None:
+                debug_imgs.append([])
 
             for col in range(0, result_w, output_clipping_size):
 
@@ -285,13 +270,21 @@ class ClippingModel(Model):
                     row, col, self._clipping_size, self._clipping_size
                 )[:, :, :]
 
+                # Clean input
+                # being_cleaned = input_clipping.copy()
+                # being_cleaned[: self._clipping_surplus // 2, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 0
+                # being_cleaned[-self._clipping_surplus // 2 :, :, TRAINING_GRID_INDICES.IS_PREDICTED] = 0
+                # being_cleaned[:, : self._clipping_surplus // 2, TRAINING_GRID_INDICES.IS_PREDICTED] = 0
+                # being_cleaned[:, -self._clipping_surplus // 2 :, TRAINING_GRID_INDICES.IS_PREDICTED] = 0
+                x = Model.clean_input(input_clipping, self.input_third_dimension)
+
                 # Take already predicted values
                 # Left Neighbor
                 if col > 0:
                     already_predicted_context_width = min(
                         self._clipping_surplus // 2, col
                     )  # it can happen, that the second column is already partial and there won't be a full clipping_surplus ready left hand side of it
-                    input_clipping[
+                    x[
                         self._clipping_surplus // 2 : -self._clipping_surplus // 2,
                         self._clipping_surplus // 2 - already_predicted_context_width : self._clipping_surplus // 2,
                         1 : feedback_third_dimension + 1,
@@ -306,26 +299,47 @@ class ClippingModel(Model):
 
                 # Top neighbors
                 if row > 0:
+                    if col > 0:
+                        top_neighbors_width = output_clipping_size  + self._clipping_surplus
+                        top_neighbors_offset = 0
+                    else:
+                        top_neighbors_width = output_clipping_size  + self._clipping_surplus // 2
+                        top_neighbors_offset = self._clipping_surplus // 2
+                    if col >= result_w - output_clipping_size - self._clipping_surplus // 2:
+                        top_neighbors_width = result_w - (col - self._clipping_surplus // 2 + top_neighbors_offset)
+
                     already_predicted_context_height = min(
                         self._clipping_surplus // 2, row
                     )  # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
-                    input_clipping[:already_predicted_context_height, :, :] = top_neighbors[
-                        -already_predicted_context_height:
+                    x[
+                        :already_predicted_context_height,
+                        top_neighbors_offset: top_neighbors_offset + top_neighbors_width,
+                        1 : feedback_third_dimension + 1:
+                    ] = result.read_arbitrary_fragment(
+                        row - already_predicted_context_height,
+                        col - self._clipping_surplus // 2 + top_neighbors_offset,
+                        already_predicted_context_height,
+                        top_neighbors_width,
+                    )[
+                        :, :, :feedback_third_dimension
                     ]
 
-                # Clean input
-                x = input_clipping.copy()
-                x[: self._clipping_surplus // 2, :, 0] = 0
-                x[-self._clipping_surplus // 2 :, :, 0] = 0
-                x[:, : self._clipping_surplus // 2, 0] = 0
-                x[:, -self._clipping_surplus // 2 :, 0] = 0
-                x = Model.clean_input(x, self.input_third_dimension)
+                    del top_neighbors_width
+                    del top_neighbors_offset
+
+                # Debug
+                if debug_imgs is not None:
+                    debug_imgs[-1].append(x)
 
                 layers = list(self._keras_model(tf.expand_dims(x, axis=0)).values())
 
                 output_clipping = np.zeros((output_clipping_size, output_clipping_size, self.output_third_dimension))
                 for layer_i in range(len(layers)):
                     output_clipping[:, :, layer_i] = layers[layer_i][0, :, :, 0]
+
+                output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] = output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] > 0.5
+                if self.output_third_dimension >= 3:
+                    output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] = output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] > 0.5
 
                 result.write_arbitrary_fragment(output_clipping, row, col)
                 print(".", end="")

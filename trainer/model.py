@@ -77,14 +77,16 @@ class Model(ABC):
             Shallow copy of given input grid with cleaned IS_STREET values, where IS_PREDICTED is on.
         """
         result = input.copy()
-        rows_number, cols_number, _ = result.shape
 
-        for row in range(rows_number):
-            for col in range(cols_number):
-                if result[row, col, TRAINING_GRID_INDICES.IS_PREDICTED] == 1:
-                    result[row, col, TRAINING_GRID_INDICES.IS_STREET] = 0
-                    if input_third_dimension >= 4:
-                        result[row, col, TRAINING_GRID_INDICES.IS_RESIDENTIAL] = 0
+        # Create mask where IS_PREDICTED == 1
+        mask = result[:, :, TRAINING_GRID_INDICES.IS_PREDICTED] == 1
+
+        # Set IS_STREET to 0 where mask is True
+        result[:, :, TRAINING_GRID_INDICES.IS_STREET][mask] = 0
+
+        # Optionally set IS_RESIDENTIAL to 0
+        if input_third_dimension >= 4:
+            result[:, :, TRAINING_GRID_INDICES.IS_RESIDENTIAL][mask] = 0
 
         return result
 
