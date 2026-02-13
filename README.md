@@ -7,8 +7,6 @@
 ## Features
 
 - Batch generation from large grid files
-- Randomized cuts generator for data augmentation
-- Support for optimal data loading via Keras prefetching
 - Grid segment reading and writing utilities
 - Extensible for various grid types and training scenarios
 
@@ -17,56 +15,72 @@
 ```
 CRoadA/
 ├── application
+│   ├── __init__.py
 │   ├── main.py
-│   ├── test_MapDisplayer.py
+│   ├── main_window.py
+│   ├── MapWindow.py
+│   ├── static
+│   │   ├── main.css
+│   │   └── map.js
+│   ├── templates
+│   │   ├── map.html
+│   │   └── map-style.css
 │   └── ui_manager.py
 ├── cache
-│   ├── c737f046323216334159224013f1a92b4c71a9dc.json
-│   └── ...
 ├── check_dir
 │   └── check.grid
 ├── curve_analizer
 │   └── curve_analizer.py
+├── debug_segments
 ├── .gitignore
 ├── graph_remaker
 │   ├── borders_identifier.py
 │   ├── data_analyser.py
 │   ├── data_structures.py
+│   ├── __init__.py
 │   ├── integrated.py
 │   ├── memory_wise.py
 │   ├── morphological_remaker.py
 │   ├── prediction_statistics.py
 │   ├── __pycache__
-│   │   └── ...
 │   ├── streets_separator.py
 │   └── utils.py
 ├── grid_manager.py
-├── grids
-│   ├── Gliwice.city_grid
-│   ├── przyklad1.dat
+├── grids                          -> city road grid files to train models
+│   ├── evaluation
 │   ├── square_test.dat
-│   ├── Tychy.dat
-│   ├── Zabrze.city_grid
-│   └── ...
+│   └── with-is-residential
+│       ├── Bydgoszcz-Polska.city_grid
+│       ├── Chorzów-Polska.city_grid
+│       ├── Gdańsk-Polska.city_grid
+│       ├── Gdynia-Polska.city_grid
+│       ├── Koszalin-Polska.city_grid
+│       ├── Lublin-Polska.city_grid
+│       ├── Mielec-Polska.city_grid
+│       ├── Radom-Polska.city_grid
+│       ├── Rybnik-Polska.city_grid
+│       ├── Świętochłowice-Polska.city_grid
+│       └── Toruń-Polska.city_grid
 ├── __init__.py
 ├── main.ipynb                    -> an overview for visualisation of the whole project
+├── models
+│   └── shallowed_unet_256_1m_is_street_only      -> sample model save
+│       ├── 1770922591_model.keras
+│       └── 1770926494_model.keras
 ├── __pycache__
-│   └── ...
-├── README.md
+├── README.md                     -> this README
+├── requirements-no-gpu.txt
 ├── requirements.txt
+├── resegment.ipynb
 ├── scraper
-│   ├── cache
-│   │   ├── fe8eb1852dff9af8c4881e473737b87098263a17.json
-│   │   └── ...
 │   ├── data_loader.py
 │   ├── geometry_processor.py
 │   ├── graph_loader.py
 │   ├── grid_builder.py
 │   ├── grid.ipynb
-│   ├── grids
 │   ├── __init__.py
+│   ├── locator.py
 │   ├── __pycache__
-│   │   └── ...
 │   ├── rasterizer.py
 │   ├── requirements.txt
 │   └── scrapper_miast.ipynb
@@ -74,27 +88,18 @@ CRoadA/
 ├── test_check_dir
 │   └── check.grid
 ├── test_images
-│   ├── crossroad_conflict.png
-│   └── ...
 ├── testing_field.py
 ├── test_m.py
 ├── test.py
 ├── tmp
-│   └── batches
-│       └── batch_sequences
-│           └── cuts
-│               ├── przyklad1.dat_cut_1034_28_1000_1000.dat
-│               └── ...
 └── trainer
-    ├── __pycache__
-    │   └── ...
-    ├── batch_sequence.py         -> for visualisation of batch items (not used by models)
     ├── clipping_model.py         -> model main logic
-    ├── clipping_sequence.py      -> for visualisation of batch items (not used by models)
     ├── cut_grid.py               -> cut from/to files utils
     ├── data_generator.py         -> cut generation logic (for batches in keras model)
     ├── model_architectures.py    -> place for models used in clipping_model.py
+    ├── model_metrics.py
     ├── model.py                  -> abstract class for the model
+    ├── __pycache__
     └── trainer.py                -> "main" class for the trainer module (interface for training)
 ```
 
@@ -102,6 +107,7 @@ CRoadA/
 
 - Python 3.12
   [file with requirements](./requirements.txt)
+  [requirements-no-gpu](./requirements-no-gpu.txt)
 
 Install dependencies with:
 
@@ -119,10 +125,6 @@ pip install -r requirements.txt
    ```
 
 2. **Check [main.ipynb notebook file](./main.ipynb)** for the tutorial.
-
-## Example
-
-### TODO
 
 ## Authors
 
