@@ -194,11 +194,14 @@ class ClippingModel(Model):
                 verbose=1,
             ),
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(self._dir, str(int(time())) + "_model.keras"),
+                filepath=os.path.join(
+                    self._dir, str(int(time())) + "_epoch{epoch:02d}_val_loss{val_loss:.2f}" + "_model.keras"
+                ),
                 save_weights_only=False,
                 save_best_only=False,
                 verbose=1,
             ),
+            tf.keras.callbacks.BackupAndRestore(backup_dir=os.path.join(self._dir, "backup")),
         ]
 
         # Fit the model using the datasets
