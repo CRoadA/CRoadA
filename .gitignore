@@ -14,3 +14,5 @@ cache
 /.vscode
 /app_grids
 /debug_segments/
+
+notebooks/priv

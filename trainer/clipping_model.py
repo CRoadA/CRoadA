@@ -214,7 +214,7 @@ class ClippingModel(Model):
             callbacks=callbacks,
         )
 
-    def predict(self, input: GridManager[InputGrid], debug_imgs: list[np.ndarray] = None) -> GridManager[OutputGrid]:
+    def predict(self, input: GridManager[InputGrid], debug_imgs: list[list[np.ndarray]] = None, debug_outs: list[list[np.ndarray]] = None) -> GridManager[OutputGrid]:
         """Predicts the output grid based on the input grid.
 
         :param input: Input grid manager containing the input grid for prediction.
@@ -259,6 +259,8 @@ class ClippingModel(Model):
             # Debug
             if debug_imgs is not None:
                 debug_imgs.append([])
+            if debug_outs is not None:
+                debug_outs.append([])
 
             for col in range(0, result_w, output_clipping_size):
 
@@ -324,12 +326,10 @@ class ClippingModel(Model):
                         :, :, :feedback_third_dimension
                     ]
 
+                    
+
                     del top_neighbors_width
                     del top_neighbors_offset
-
-                # Debug
-                if debug_imgs is not None:
-                    debug_imgs[-1].append(x)
 
                 layers = list(self._keras_model(tf.expand_dims(x, axis=0)).values())
 
@@ -340,6 +340,12 @@ class ClippingModel(Model):
                 output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] = output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] > 0.5
                 if self.output_third_dimension >= 3:
                     output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] = output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] > 0.5
+
+                # Debug
+                if debug_imgs is not None:
+                    debug_imgs[-1].append(x)
+                if debug_outs is not None:
+                    debug_outs[-1].append(output_clipping)
 
                 result.write_arbitrary_fragment(output_clipping, row, col)
                 print(".", end="")
