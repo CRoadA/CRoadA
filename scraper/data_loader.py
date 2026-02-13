@@ -189,7 +189,7 @@ class DataLoader:
 
     @staticmethod
     def add_residential_to_grid(
-        grid_manager: GridManager, city_name: str, on_progress: Callable[[float | None, str], None] | None = None
+        grid_manager: GridManager, city: str | Polygon, on_progress: Callable[[float | None, str], None] | None = None
     ):
         """
         Enriches the existing grid with is_residential information.
@@ -198,7 +198,7 @@ class DataLoader:
         builder = GridBuilder()
         rasterizer = Rasterizer()
         geometry_processor = GeometryProcessor()
-        gdf_edges = builder.get_city_roads(city_name, residential_max_radius=30)
+        gdf_edges = builder.get_city_roads(city, residential_max_radius=30)
         gdf_residentials = gdf_edges[gdf_edges["is_residential"]]
 
         segments_rows = math.ceil(meta.rows_number / meta.segment_h)
@@ -241,7 +241,7 @@ class DataLoader:
                 )
 
         if on_progress:
-            on_progress(None, "is_residential flag was added successfully.")
+            on_progress(None, "Residential roads were marked successfully.")
 
     @staticmethod
     def _get_altitude_source(lat: float, lon: float, geo_data=None) -> float:

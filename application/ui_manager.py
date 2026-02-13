@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
 from application.MapWindow import MapWindow
-import sys
+import numpy as np
 
 
 from collections.abc import Callable
@@ -18,7 +18,7 @@ class UIManager:
         
 
 
-    def display_prediction(self, geo_json: dict):#, stats: PredictionStatistics):
+    def display_prediction(self, geo_json: dict, stats: PredictionStatistics):
         """Shows obtained GeoJSON with predicted city mesh and statistics of the prediction. Ends indication of loading on client.
 
         Parameters
@@ -28,8 +28,11 @@ class UIManager:
         stats : PredictionStatistics
             Statistics of the prediction.
         """
-        # TODO
         pass
+
+
+    def display_grid(self, grid : np.ndarray):
+        self.window.display_grid(grid)
 
 
     def display_error(self, error_message : str):
