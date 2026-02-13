@@ -2,6 +2,7 @@ import random
 from typing import Any
 import numpy as np
 import tensorflow as tf
+from scipy.ndimage import distance_transform_edt
 
 from grid_manager import Grid, GridManager
 from trainer.cut_grid import cut_from_cut, cut_from_grid_segments
@@ -44,6 +45,10 @@ def get_tf_dataset(
             shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32
         )
 
+    y_spec_dict["distance"] = tf.TensorSpec(
+        shape=(clipping_size - input_surplus, clipping_size - input_surplus, 1), dtype=tf.float32
+    )
+
     output_signature = (
         tf.TensorSpec(shape=(clipping_size, clipping_size, input_third_dimension), dtype=tf.float32),
         y_spec_dict,
@@ -74,7 +79,7 @@ def clipping_sample_generator(
     """Generates samples for clipping training.
     Yields tuples (input, output), where:
     - input is a numpy array of shape (clipping_size, clipping_size, 3) containing IS_STREET, ALTITUDE and IS_MODIFIABLE values,
-    - output is a dictionary with keys 'is_street' and 'altitude', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
+    - output is a dictionary with keys 'is_street', 'altitude' and 'distance', each being a numpy array of shape (clipping_size - input_surplus, clipping_size - input_surplus, 1).
     """
     assert input_third_dimension in [2, 3, 4], "input_third_dimension must be one of following values: [2, 3, 4]"
     assert output_third_dimension in [1, 2, 3], "output_third_dimension must be one of following values: [1, 2, 3]"
@@ -153,6 +158,13 @@ def clipping_sample_generator(
             output["is_residential"] = output_clipping[:, :, [PREDICT_GRID_INDICES.IS_RESIDENTIAL]].astype(
                 np.float32
             )  # shape: (cut_size - input_surplus, cut_size - input_surplus, 1)
+
+        distance_map = distance_transform_edt(1 - output["is_street"][..., 0])
+        max_dist = np.max(distance_map)
+        if max_dist > 0:
+            distance_map /= max_dist  # normalize to [0, 1]
+        output["distance"] = distance_map[..., None].astype(np.float32)
+
         # Yield the input-output pair - TensorFlow will handle batching
         yield x, output
 

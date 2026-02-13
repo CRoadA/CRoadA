@@ -39,7 +39,7 @@ class ClippingModel(Model):
         clipping_surplus: int = 64,
         input_third_dimension: int = 4,
         output_third_dimension: int = 3,
-        weights: list[int] = [10, 1, 10],
+        weights: list[int] = [10, 1, 10, 3],
         path: str | None = None,
         **kwargs,
     ):
@@ -97,6 +97,10 @@ class ClippingModel(Model):
                     tf.keras.metrics.Recall(name="recall", thresholds=0.5),
                     _dice_coef,
                 ]
+
+            loss["distance"] = tf.keras.losses.Huber(delta=0.1)
+            loss_weights["distance"] = self._weights[3]
+            metrics["distance"] = [tf.keras.metrics.MeanAbsoluteError(name="mae")]
 
             # Compile the model
             self._keras_model.compile(optimizer="adam", loss=loss, loss_weights=loss_weights, metrics=metrics)
@@ -179,14 +183,14 @@ class ClippingModel(Model):
 
         callbacks = [
             tf.keras.callbacks.EarlyStopping(
-                monitor="val_is_street__dice_coef" if self.output_third_dimension >= 2 else "val__dice_coef",
+                monitor="val_is_street__dice_coef",
                 mode="max",
                 patience=20,
                 restore_best_weights=True,
                 verbose=1,
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor="val_is_street__dice_coef" if self.output_third_dimension >= 2 else "val__dice_coef",
+                monitor="val_is_street__dice_coef",
                 mode="max",
                 factor=0.5,
                 patience=7,
@@ -214,7 +218,12 @@ class ClippingModel(Model):
             callbacks=callbacks,
         )
 
-    def predict(self, input: GridManager[InputGrid], debug_imgs: list[list[np.ndarray]] = None, debug_outs: list[list[np.ndarray]] = None) -> GridManager[OutputGrid]:
+    def predict(
+        self,
+        input: GridManager[InputGrid],
+        debug_imgs: list[list[np.ndarray]] = None,
+        debug_outs: list[list[np.ndarray]] = None,
+    ) -> GridManager[OutputGrid]:
         """Predicts the output grid based on the input grid.
 
         :param input: Input grid manager containing the input grid for prediction.
@@ -302,10 +311,10 @@ class ClippingModel(Model):
                 # Top neighbors
                 if row > 0:
                     if col > 0:
-                        top_neighbors_width = output_clipping_size  + self._clipping_surplus
+                        top_neighbors_width = output_clipping_size + self._clipping_surplus
                         top_neighbors_offset = 0
                     else:
-                        top_neighbors_width = output_clipping_size  + self._clipping_surplus // 2
+                        top_neighbors_width = output_clipping_size + self._clipping_surplus // 2
                         top_neighbors_offset = self._clipping_surplus // 2
                     if col >= result_w - output_clipping_size - self._clipping_surplus // 2:
                         top_neighbors_width = result_w - (col - self._clipping_surplus // 2 + top_neighbors_offset)
@@ -315,8 +324,8 @@ class ClippingModel(Model):
                     )  # it can happen, that the second row is already partial and there won't be a full clipping_surplus ready over it
                     x[
                         :already_predicted_context_height,
-                        top_neighbors_offset: top_neighbors_offset + top_neighbors_width,
-                        1 : feedback_third_dimension + 1:
+                        top_neighbors_offset : top_neighbors_offset + top_neighbors_width,
+                        1 : feedback_third_dimension + 1 :,
                     ] = result.read_arbitrary_fragment(
                         row - already_predicted_context_height,
                         col - self._clipping_surplus // 2 + top_neighbors_offset,
@@ -326,20 +335,22 @@ class ClippingModel(Model):
                         :, :, :feedback_third_dimension
                     ]
 
-                    
-
                     del top_neighbors_width
                     del top_neighbors_offset
 
                 layers = list(self._keras_model(tf.expand_dims(x, axis=0)).values())
 
                 output_clipping = np.zeros((output_clipping_size, output_clipping_size, self.output_third_dimension))
-                for layer_i in range(len(layers)):
+                for layer_i in range(len(layers) - 1):
                     output_clipping[:, :, layer_i] = layers[layer_i][0, :, :, 0]
 
-                output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] = output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] > 0.5
+                output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] = (
+                    output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] > 0.5
+                )
                 if self.output_third_dimension >= 3:
-                    output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] = output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] > 0.5
+                    output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] = (
+                        output_clipping[..., PREDICT_GRID_INDICES.IS_RESIDENTIAL] > 0.5
+                    )
 
                 # Debug
                 if debug_imgs is not None:
