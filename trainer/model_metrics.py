@@ -48,7 +48,11 @@ class FocalDiceLoss(tf.keras.losses.Loss):
         )
 
     def call(self, y_true, y_pred):
-        return self._focal(y_true, y_pred) + self.dice_weight * _dice_loss(y_true, y_pred)
+        focal_part = self._focal(y_true, y_pred)
+        dice_part = self.dice_weight * _dice_loss(y_true, y_pred)
+        conn_part = 0.2 * self.connectivity_loss(y_true, y_pred)
+
+        return focal_part + dice_part + conn_part
 
     def get_config(self):
         cfg = super().get_config()
@@ -61,3 +65,12 @@ class FocalDiceLoss(tf.keras.losses.Loss):
             }
         )
         return cfg
+
+    def connectivity_loss(self, y_true, y_pred):
+        dy_true = y_true[:, 1:, :, :] - y_true[:, :-1, :, :]
+        dx_true = y_true[:, :, 1:, :] - y_true[:, :, :-1, :]
+
+        dy_pred = y_pred[:, 1:, :, :] - y_pred[:, :-1, :, :]
+        dx_pred = y_pred[:, :, 1:, :] - y_pred[:, :, :-1, :]
+
+        return tf.reduce_mean(tf.abs(dy_true - dy_pred)) + tf.reduce_mean(tf.abs(dx_true - dx_pred))

@@ -39,7 +39,7 @@ class ClippingModel(Model):
         clipping_surplus: int = 64,
         input_third_dimension: int = 4,
         output_third_dimension: int = 3,
-        weights: list[int] = [10, 1, 10, 3],
+        weights: list[int] = [10, 1, 10, 4],
         path: str | None = None,
         **kwargs,
     ):
