@@ -340,13 +340,12 @@ class ClippingModel(Model):
 
                 model_outputs = self._keras_model(tf.expand_dims(x, axis=0))
 
+                # Filter out the distance output - we only want is_street, altitude, and is_residential
+                filtered_outputs = [(name, tensor) for name, tensor in model_outputs.items() if name != "distance"]
+                
                 output_clipping = np.zeros((output_clipping_size, output_clipping_size, self.output_third_dimension))
-                layer_i = 0
-                for output_name, output_tensor in model_outputs.items():
-                    if output_name == "distance":
-                        continue
+                for layer_i, (output_name, output_tensor) in enumerate(filtered_outputs):
                     output_clipping[:, :, layer_i] = output_tensor[0, :, :, 0]
-                    layer_i += 1
 
                 output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] = (
                     output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] > 0.5
