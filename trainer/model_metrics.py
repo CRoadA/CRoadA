@@ -32,6 +32,7 @@ class FocalDiceLoss(tf.keras.losses.Loss):
         gamma: float = 2.0,
         alpha: float = 0.75,
         dice_weight: float = 0.5,
+        connectivity_weight: float = 0.2,
         from_logits: bool = False,
         name: str = "focal_dice_loss",
         **kwargs
@@ -40,6 +41,7 @@ class FocalDiceLoss(tf.keras.losses.Loss):
         self.gamma = gamma
         self.alpha = alpha
         self.dice_weight = dice_weight
+        self.connectivity_weight = connectivity_weight
         self.from_logits = from_logits
         self._focal = tf.keras.losses.BinaryFocalCrossentropy(
             gamma=gamma,
@@ -50,7 +52,7 @@ class FocalDiceLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         focal_part = self._focal(y_true, y_pred)
         dice_part = self.dice_weight * _dice_loss(y_true, y_pred)
-        conn_part = 0.2 * self.connectivity_loss(y_true, y_pred)
+        conn_part = self.connectivity_weight * self.connectivity_loss(y_true, y_pred)
 
         return focal_part + dice_part + conn_part
 
@@ -61,6 +63,7 @@ class FocalDiceLoss(tf.keras.losses.Loss):
                 "gamma": self.gamma,
                 "alpha": self.alpha,
                 "dice_weight": self.dice_weight,
+                "connectivity_weight": self.connectivity_weight,
                 "from_logits": self.from_logits,
             }
         )
