@@ -210,7 +210,7 @@ def test_clipping_model_shallowed_unet(
             1, 1, activation="sigmoid", name="is_residential", dtype="float32"
         )(c6)
 
-    outputs["distance"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="distance")(c6)
+    outputs["distance"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="distance", dtype="float32")(c6)
 
     model = tf.keras.Model(inputs, outputs)
     return model
