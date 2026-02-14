@@ -338,11 +338,15 @@ class ClippingModel(Model):
                     del top_neighbors_width
                     del top_neighbors_offset
 
-                layers = list(self._keras_model(tf.expand_dims(x, axis=0)).values())
+                model_outputs = self._keras_model(tf.expand_dims(x, axis=0))
 
                 output_clipping = np.zeros((output_clipping_size, output_clipping_size, self.output_third_dimension))
-                for layer_i in range(len(layers) - 1):
-                    output_clipping[:, :, layer_i] = layers[layer_i][0, :, :, 0]
+                layer_i = 0
+                for output_name, output_tensor in model_outputs.items():
+                    if output_name == "distance":
+                        continue
+                    output_clipping[:, :, layer_i] = output_tensor[0, :, :, 0]
+                    layer_i += 1
 
                 output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] = (
                     output_clipping[..., PREDICT_GRID_INDICES.IS_STREET] > 0.5
