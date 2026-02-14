@@ -35,7 +35,9 @@ def base_clipping_model(
         )(x)
         outputs["is_residential"] = out_is_residential
 
-    outputs["distance"] = tf.keras.layers.Conv2D(1, 1, activation="linear", name="distance")(x)
+    outputs["distance"] = tf.keras.layers.Conv2D(
+        1, 1, activation="linear", name="distance", dtype="float32"
+    )(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
